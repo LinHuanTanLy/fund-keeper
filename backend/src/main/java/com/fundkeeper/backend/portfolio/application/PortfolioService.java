@@ -1,7 +1,5 @@
 package com.fundkeeper.backend.portfolio.application;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -14,54 +12,42 @@ import com.fundkeeper.backend.account.domain.FundAccount;
 import com.fundkeeper.backend.account.domain.FundAccountRepository;
 import com.fundkeeper.backend.auth.domain.User;
 import com.fundkeeper.backend.auth.domain.UserRepository;
-import com.fundkeeper.backend.fund.application.FundCatalogService;
-import com.fundkeeper.backend.fund.domain.FeeCalculationMethod;
 import com.fundkeeper.backend.fund.domain.FundDataRepository;
 import com.fundkeeper.backend.fund.domain.FundDefinition;
-import com.fundkeeper.backend.fund.domain.OfficialNav;
-import com.fundkeeper.backend.fund.domain.PurchaseFeeRule;
 import com.fundkeeper.backend.portfolio.domain.FundPosition;
 import com.fundkeeper.backend.portfolio.domain.FundTransaction;
-import com.fundkeeper.backend.portfolio.domain.PendingReason;
 import com.fundkeeper.backend.portfolio.domain.PortfolioRepository;
 import com.fundkeeper.backend.portfolio.domain.SnapshotBoundaryRepository;
-import com.fundkeeper.backend.portfolio.domain.TransactionStatus;
 import com.fundkeeper.backend.shared.exception.BusinessException;
 import com.fundkeeper.backend.shared.exception.ErrorCode;
 
 @Service
 public class PortfolioService {
 
-    private static final int MONEY_SCALE = 4;
-    private static final int SHARE_SCALE = 8;
-
     private final UserRepository userRepository;
     private final FundAccountRepository accountRepository;
-    private final FundCatalogService fundCatalogService;
     private final FundDataRepository fundDataRepository;
     private final PortfolioRepository portfolioRepository;
     private final SnapshotBoundaryRepository snapshotBoundaryRepository;
-    private final TradingCalendarService tradingCalendarService;
+    private final BuyTransactionPlanner buyPlanner;
     private final TransactionRequestFingerprint requestFingerprint;
     private final Clock clock;
 
     public PortfolioService(
             UserRepository userRepository,
             FundAccountRepository accountRepository,
-            FundCatalogService fundCatalogService,
             FundDataRepository fundDataRepository,
             PortfolioRepository portfolioRepository,
             SnapshotBoundaryRepository snapshotBoundaryRepository,
-            TradingCalendarService tradingCalendarService,
+            BuyTransactionPlanner buyPlanner,
             TransactionRequestFingerprint requestFingerprint,
             Clock clock) {
         this.userRepository = userRepository;
         this.accountRepository = accountRepository;
-        this.fundCatalogService = fundCatalogService;
         this.fundDataRepository = fundDataRepository;
         this.portfolioRepository = portfolioRepository;
         this.snapshotBoundaryRepository = snapshotBoundaryRepository;
-        this.tradingCalendarService = tradingCalendarService;
+        this.buyPlanner = buyPlanner;
         this.requestFingerprint = requestFingerprint;
         this.clock = clock;
     }
@@ -71,7 +57,7 @@ public class PortfolioService {
             String userPublicId,
             BuyTransactionCommand rawCommand) {
         User user = activeUserForUpdate(userPublicId);
-        BuyTransactionCommand command = normalize(rawCommand);
+        BuyTransactionCommand command = buyPlanner.normalize(rawCommand);
         String fingerprint = requestFingerprint.create(command);
 
         var existing = portfolioRepository
@@ -93,52 +79,35 @@ public class PortfolioService {
         FundAccount account = lockedActiveAccount(
                 user.id(),
                 command.accountPublicId());
-        FundDefinition fund = fundCatalogService.getSupportedFund(
-                command.fundCode());
-        validateDates(command);
-
-        LocalDate effectiveDate =
-                tradingCalendarService.effectiveTradeDate(
-                        command.submittedDate(),
-                        command.submittedPeriod());
+        BuyTransactionPlan plan =
+                buyPlanner.planNormalized(command);
         validateSnapshotBoundary(
                 user.id(),
                 account.id(),
-                effectiveDate);
-        validateConfirmedDate(command, effectiveDate);
-
-        Calculation calculation = calculate(
-                fund,
-                command,
-                effectiveDate);
-        LocalDate holdingStartDate = holdingStartDate(
-                fund,
-                command,
-                effectiveDate,
-                calculation.status());
+                plan.effectiveDate());
         Instant now = clock.instant();
         FundTransaction transaction = portfolioRepository.saveTransaction(
                 FundTransaction.createBuy(
                         user.id(),
                         account.id(),
-                        fund.id(),
+                        plan.fund().id(),
                         command.requestId(),
                         fingerprint,
-                        calculation.status(),
+                        plan.status(),
                         command.amount(),
-                        calculation.feeAmount(),
-                        calculation.netAmount(),
-                        calculation.shares(),
+                        plan.feeAmount(),
+                        plan.netAmount(),
+                        plan.shares(),
                         command.submittedDate(),
                         command.submittedPeriod(),
-                        effectiveDate,
+                        plan.effectiveDate(),
                         command.confirmedDate(),
-                        calculation.navDate(),
-                        calculation.unitNav(),
-                        calculation.navSource(),
-                        calculation.feeRate(),
-                        calculation.feeSource(),
-                        calculation.pendingReason(),
+                        plan.navDate(),
+                        plan.unitNav(),
+                        plan.navSource(),
+                        plan.feeRate(),
+                        plan.feeSource(),
+                        plan.pendingReason(),
                         command.note(),
                         now));
 
@@ -146,13 +115,16 @@ public class PortfolioService {
             applyBuyToPosition(
                     user.id(),
                     account.id(),
-                    fund.id(),
+                    plan.fund().id(),
                     transaction,
-                    holdingStartDate,
+                    plan.holdingStartDate(),
                     now);
         }
         return new BuyTransactionOutcome(
-                new TransactionDetails(transaction, account, fund),
+                new TransactionDetails(
+                        transaction,
+                        account,
+                        plan.fund()),
                 false);
     }
 
@@ -206,96 +178,6 @@ public class PortfolioService {
                 .toList();
     }
 
-    private Calculation calculate(
-            FundDefinition fund,
-            BuyTransactionCommand command,
-            LocalDate effectiveDate) {
-        if (command.confirmedShares() != null) {
-            return new Calculation(
-                    TransactionStatus.CONFIRMED,
-                    null,
-                    null,
-                    command.confirmedShares(),
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null);
-        }
-
-        var nav = fundDataRepository.findOfficialNav(
-                fund.id(),
-                effectiveDate);
-        var feeRule = fundDataRepository.findPurchaseFeeRule(
-                fund.id(),
-                command.amount(),
-                effectiveDate);
-        if (nav.isEmpty() || feeRule.isEmpty()) {
-            return pending(nav.isEmpty(), feeRule.isEmpty());
-        }
-        return estimated(command.amount(), nav.get(), feeRule.get());
-    }
-
-    private Calculation estimated(
-            BigDecimal grossAmount,
-            OfficialNav nav,
-            PurchaseFeeRule feeRule) {
-        if (nav.unitNav().signum() <= 0
-                || feeRule.feeRate().signum() < 0
-                || feeRule.calculationMethod()
-                        != FeeCalculationMethod.GROSS_INCLUDES_FEE) {
-            throw new BusinessException(
-                    ErrorCode.SERVICE_UNAVAILABLE,
-                    "基金净值或费率数据不正确");
-        }
-        BigDecimal netAmount = grossAmount.divide(
-                        BigDecimal.ONE.add(feeRule.feeRate()),
-                        MONEY_SCALE,
-                        RoundingMode.HALF_UP);
-        BigDecimal feeAmount = grossAmount.subtract(netAmount)
-                .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-        BigDecimal shares = netAmount.divide(
-                nav.unitNav(),
-                SHARE_SCALE,
-                RoundingMode.HALF_UP);
-        return new Calculation(
-                TransactionStatus.ESTIMATED,
-                feeAmount,
-                netAmount,
-                shares,
-                nav.navDate(),
-                nav.unitNav(),
-                nav.dataSource(),
-                feeRule.feeRate(),
-                feeRule.dataSource(),
-                null);
-    }
-
-    private Calculation pending(
-            boolean navMissing,
-            boolean feeMissing) {
-        PendingReason reason;
-        if (navMissing && feeMissing) {
-            reason = PendingReason.NAV_AND_FEE_UNAVAILABLE;
-        } else if (navMissing) {
-            reason = PendingReason.OFFICIAL_NAV_UNAVAILABLE;
-        } else {
-            reason = PendingReason.FEE_RULE_UNAVAILABLE;
-        }
-        return new Calculation(
-                TransactionStatus.PENDING,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                reason);
-    }
-
     private void applyBuyToPosition(
             long userId,
             long accountId,
@@ -323,65 +205,6 @@ public class PortfolioService {
         portfolioRepository.savePosition(position);
     }
 
-    private BuyTransactionCommand normalize(
-            BuyTransactionCommand command) {
-        BigDecimal amount = command.amount()
-                .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-        BigDecimal confirmedShares = command.confirmedShares() == null
-                ? null
-                : command.confirmedShares().setScale(
-                        SHARE_SCALE,
-                        RoundingMode.HALF_UP);
-        String note = command.note() == null
-                ? null
-                : command.note().trim();
-        if (note != null && note.isEmpty()) {
-            note = null;
-        }
-        return new BuyTransactionCommand(
-                command.requestId().trim(),
-                command.accountPublicId().trim(),
-                command.fundCode().trim(),
-                amount,
-                command.submittedDate(),
-                command.submittedPeriod(),
-                confirmedShares,
-                command.confirmedDate(),
-                note);
-    }
-
-    private void validateDates(BuyTransactionCommand command) {
-        LocalDate today = LocalDate.now(clock);
-        if (command.submittedDate().isAfter(today)) {
-            throw new BusinessException(
-                    ErrorCode.INVALID_TRANSACTION_DATE,
-                    "提交日期不能晚于当前日期");
-        }
-        if (command.confirmedDate() != null) {
-            if (command.confirmedShares() == null) {
-                throw new BusinessException(
-                        ErrorCode.INVALID_TRANSACTION_DATE,
-                        "填写确认日期时必须同时填写平台确认份额");
-            }
-            if (command.confirmedDate().isAfter(today)) {
-                throw new BusinessException(
-                        ErrorCode.INVALID_TRANSACTION_DATE,
-                        "确认日期不能晚于当前日期");
-            }
-        }
-    }
-
-    private void validateConfirmedDate(
-            BuyTransactionCommand command,
-            LocalDate effectiveDate) {
-        if (command.confirmedDate() != null
-                && command.confirmedDate().isBefore(effectiveDate)) {
-            throw new BusinessException(
-                    ErrorCode.INVALID_TRANSACTION_DATE,
-                    "确认日期不能早于有效交易日");
-        }
-    }
-
     private void validateSnapshotBoundary(
             long userId,
             long accountId,
@@ -398,24 +221,6 @@ public class PortfolioService {
                             ErrorCode.TRANSACTION_BEFORE_SNAPSHOT,
                             "新交易必须晚于最近一次生效快照");
                 });
-    }
-
-    private LocalDate holdingStartDate(
-            FundDefinition fund,
-            BuyTransactionCommand command,
-            LocalDate effectiveDate,
-            TransactionStatus status) {
-        if (status == TransactionStatus.PENDING) {
-            return null;
-        }
-        if (status == TransactionStatus.CONFIRMED) {
-            return command.confirmedDate();
-        }
-        return tradingCalendarService
-                .estimatedConfirmationDate(
-                        effectiveDate,
-                        fund.confirmationDelayTradingDays())
-                .orElse(null);
     }
 
     private User activeUser(String publicId) {
@@ -500,16 +305,4 @@ public class PortfolioService {
         return new PositionDetails(position, account, fund);
     }
 
-    private record Calculation(
-            TransactionStatus status,
-            BigDecimal feeAmount,
-            BigDecimal netAmount,
-            BigDecimal shares,
-            LocalDate navDate,
-            BigDecimal unitNav,
-            String navSource,
-            BigDecimal feeRate,
-            String feeSource,
-            PendingReason pendingReason) {
-    }
 }

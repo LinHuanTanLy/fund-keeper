@@ -1,6 +1,6 @@
 # Fund Keeper
 
-面向多平台基金持仓的管理工具。项目当前已完成认证、平台账户、基金资料与手动买入三条后端纵向切片：用户可以登录后按金额录入买入，并在自己的数据空间内查看账户级持仓。
+面向多平台基金持仓的管理工具。项目当前已完成认证、平台账户、基金资料、手动买入、持仓快照导入和批量买入导入等后端纵向切片：用户可以登录后按金额录入或批量导入买入，并在自己的数据空间内查看账户级持仓。
 
 ## 当前技术栈
 
@@ -100,6 +100,8 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 | GET | `/api/v1/positions/valuations` | 查询带盘中估值或正式净值降级的持仓 |
 | POST | `/api/v1/imports/position-snapshots/preflight` | 预检持仓快照 JSON，不修改正式业务数据 |
 | POST | `/api/v1/imports/position-snapshots/{batchId}/commit` | 确认最后一次成功预检并原子写入 |
+| POST | `/api/v1/imports/transaction-batches/preflight` | 预检交易流水 JSON；当前支持批量买入 |
+| POST | `/api/v1/imports/transaction-batches/{batchId}/commit` | 原子提交最后一次成功的交易预检 |
 
 买入示例：
 
@@ -130,6 +132,11 @@ curl -X POST http://localhost:8080/api/v1/transactions/buys \
 结果；只有 `READY_TO_COMMIT` 批次才能确认。相同 `batchId` 重复确认不会
 重复记账，任意一行写入失败会整批回滚。协议和示例见
 [持仓快照 JSON 导入](docs/position-snapshot-import.md)。
+
+交易流水 JSON 同样使用两阶段导入，并与单笔买入共用交易日、15:00 截止、
+净值、费率和持仓计算规则。当前切片只支持 `BUY`；`SELL` 会在预检中明确返回
+`SELL_NOT_SUPPORTED_YET`，不会写入。协议和示例见
+[批量交易 JSON 导入](docs/transaction-batch-import.md)。
 
 基金目录、逐日交易日历和正式净值已经提供可替换的数据同步层。个人开发环境默认可使用免费的东方财富公开页面数据和上交所休市安排；Tushare 作为可选适配器保留。业务请求始终读取本地 MySQL，第三方同步失败时保留旧数据，不会清空或伪造数据。申购费率仍需独立、可追溯的数据来源；缺失时交易保持 `PENDING`。
 
@@ -184,4 +191,4 @@ cd backend
 ./mvnw test
 ```
 
-集成测试覆盖认证生命周期、账户隔离、15:00 截止、周末交易日、基金范围、正式数据缺失降级、平台确认份额、移动平均成本、跨用户资产隔离、账户归档约束、并发重复请求不重复记账，以及第三方协议解析、参考数据幂等同步、估值分页索引、实时/过期状态和正式净值降级。
+集成测试覆盖认证生命周期、账户隔离、15:00 截止、周末交易日、基金范围、正式数据缺失降级、平台确认份额、移动平均成本、跨用户资产隔离、账户归档约束、并发重复请求不重复记账、快照与批量买入的预检/幂等/原子回滚，以及第三方协议解析、参考数据幂等同步、估值分页索引、实时/过期状态和正式净值降级。
