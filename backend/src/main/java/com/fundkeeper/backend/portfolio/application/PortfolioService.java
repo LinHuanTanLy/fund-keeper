@@ -18,6 +18,7 @@ import com.fundkeeper.backend.portfolio.domain.FundPosition;
 import com.fundkeeper.backend.portfolio.domain.FundTransaction;
 import com.fundkeeper.backend.portfolio.domain.PortfolioRepository;
 import com.fundkeeper.backend.portfolio.domain.SnapshotBoundaryRepository;
+import com.fundkeeper.backend.portfolio.domain.TransactionType;
 import com.fundkeeper.backend.shared.exception.BusinessException;
 import com.fundkeeper.backend.shared.exception.ErrorCode;
 
@@ -66,7 +67,9 @@ public class PortfolioService {
                         command.requestId());
         if (existing.isPresent()) {
             FundTransaction transaction = existing.get();
-            if (!transaction.requestFingerprint().equals(fingerprint)) {
+            if (transaction.type() != TransactionType.BUY
+                    || !transaction.requestFingerprint()
+                            .equals(fingerprint)) {
                 throw new BusinessException(
                         ErrorCode.IDEMPOTENCY_CONFLICT,
                         "requestId 已用于不同的交易内容");

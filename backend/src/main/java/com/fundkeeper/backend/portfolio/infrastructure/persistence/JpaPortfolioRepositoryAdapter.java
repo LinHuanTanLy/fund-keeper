@@ -8,6 +8,8 @@ import org.springframework.stereotype.Repository;
 import com.fundkeeper.backend.portfolio.domain.FundPosition;
 import com.fundkeeper.backend.portfolio.domain.FundTransaction;
 import com.fundkeeper.backend.portfolio.domain.PortfolioRepository;
+import com.fundkeeper.backend.portfolio.domain.TransactionStatus;
+import com.fundkeeper.backend.portfolio.domain.TransactionType;
 
 @Repository
 public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
@@ -44,6 +46,22 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
             long fundId) {
         return positionRepository.findByAccountIdAndFundId(accountId, fundId)
                 .map(FundPositionJpaEntity::toDomain);
+    }
+
+    @Override
+    public boolean existsOpenSell(
+            long userId,
+            long accountId,
+            long fundId) {
+        return transactionRepository
+                .existsByUserIdAndAccountIdAndFundIdAndTypeAndStatusIn(
+                        userId,
+                        accountId,
+                        fundId,
+                        TransactionType.SELL,
+                        List.of(
+                                TransactionStatus.PENDING,
+                                TransactionStatus.ESTIMATED));
     }
 
     @Override

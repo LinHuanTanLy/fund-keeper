@@ -17,6 +17,11 @@ public interface PortfolioRepository {
             long accountId,
             long fundId);
 
+    boolean existsOpenSell(
+            long userId,
+            long accountId,
+            long fundId);
+
     List<FundPosition> findPositionsByUserId(long userId);
 
     List<FundPosition> findPositionsByUserIdAndAccountId(

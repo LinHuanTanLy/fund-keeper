@@ -6,6 +6,7 @@ import java.time.LocalDate;
 
 import com.fundkeeper.backend.portfolio.application.TransactionDetails;
 import com.fundkeeper.backend.portfolio.domain.PendingReason;
+import com.fundkeeper.backend.portfolio.domain.SellMode;
 import com.fundkeeper.backend.portfolio.domain.SubmittedPeriod;
 import com.fundkeeper.backend.portfolio.domain.TransactionStatus;
 import com.fundkeeper.backend.portfolio.domain.TransactionType;
@@ -18,10 +19,15 @@ public record TransactionView(
         String fundCode,
         String fundName,
         TransactionType type,
+        SellMode sellMode,
         TransactionStatus status,
         BigDecimal amount,
         BigDecimal feeAmount,
         BigDecimal netAmount,
+        BigDecimal expectedAmount,
+        BigDecimal actualReceivedAmount,
+        BigDecimal removedCost,
+        BigDecimal realizedProfit,
         BigDecimal shares,
         LocalDate submittedDate,
         SubmittedPeriod submittedPeriod,
@@ -46,10 +52,15 @@ public record TransactionView(
                 details.fund().code(),
                 details.fund().name(),
                 transaction.type(),
+                transaction.sellMode(),
                 transaction.status(),
                 transaction.grossAmount(),
                 transaction.feeAmount(),
                 transaction.netAmount(),
+                transaction.expectedAmount(),
+                transaction.actualReceivedAmount(),
+                transaction.removedCost(),
+                transaction.realizedProfit(),
                 transaction.shares(),
                 transaction.submittedDate(),
                 transaction.submittedPeriod(),

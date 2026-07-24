@@ -152,6 +152,70 @@ public record FundPosition(
                 now);
     }
 
+    public PositionSaleImpact saleImpact(
+            BigDecimal rawSoldShares,
+            BigDecimal proceeds) {
+        BigDecimal soldShares = rawSoldShares.setScale(
+                SHARE_SCALE,
+                RoundingMode.HALF_UP);
+        if (soldShares.signum() <= 0
+                || soldShares.compareTo(shares) > 0) {
+            throw new IllegalArgumentException(
+                    "Sold shares must be within the current position");
+        }
+        BigDecimal removedCost = soldShares.compareTo(shares) == 0
+                ? remainingCost
+                : soldShares.multiply(averageUnitCost)
+                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP)
+                        .min(remainingCost);
+        BigDecimal remainingShares = shares.subtract(soldShares)
+                .setScale(SHARE_SCALE, RoundingMode.HALF_UP);
+        BigDecimal newRemainingCost = remainingCost
+                .subtract(removedCost)
+                .max(BigDecimal.ZERO)
+                .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal realizedProfit = proceeds
+                .subtract(removedCost)
+                .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        return new PositionSaleImpact(
+                soldShares,
+                removedCost,
+                realizedProfit,
+                remainingShares,
+                newRemainingCost);
+    }
+
+    public FundPosition applySell(
+            PositionSaleImpact impact,
+            TransactionStatus transactionStatus,
+            Instant now) {
+        if (impact.clearsPosition()) {
+            throw new IllegalArgumentException(
+                    "A cleared position must be deleted");
+        }
+        PositionStatus newStatus =
+                status == PositionStatus.CONFIRMED
+                                && transactionStatus
+                                        == TransactionStatus.CONFIRMED
+                        ? PositionStatus.CONFIRMED
+                        : PositionStatus.ESTIMATED;
+        return new FundPosition(
+                id,
+                publicId,
+                userId,
+                accountId,
+                fundId,
+                impact.remainingShares(),
+                impact.remainingCost(),
+                averageCost(
+                        impact.remainingCost(),
+                        impact.remainingShares()),
+                newStatus,
+                holdingStartDate,
+                createdAt,
+                now);
+    }
+
     private static PositionStatus positionStatus(
             TransactionStatus transactionStatus) {
         return transactionStatus == TransactionStatus.CONFIRMED

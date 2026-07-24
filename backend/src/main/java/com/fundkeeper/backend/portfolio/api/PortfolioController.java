@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.fundkeeper.backend.portfolio.application.PortfolioService;
 import com.fundkeeper.backend.portfolio.application.PositionValuationService;
+import com.fundkeeper.backend.portfolio.application.SellTransactionService;
 import com.fundkeeper.backend.shared.api.ApiResponse;
 
 @RestController
@@ -25,13 +26,32 @@ import com.fundkeeper.backend.shared.api.ApiResponse;
 public class PortfolioController {
 
     private final PortfolioService portfolioService;
+    private final SellTransactionService sellTransactionService;
     private final PositionValuationService positionValuationService;
 
     public PortfolioController(
             PortfolioService portfolioService,
+            SellTransactionService sellTransactionService,
             PositionValuationService positionValuationService) {
         this.portfolioService = portfolioService;
+        this.sellTransactionService = sellTransactionService;
         this.positionValuationService = positionValuationService;
+    }
+
+    @PostMapping("/transactions/sells")
+    ResponseEntity<ApiResponse<TransactionView>> sell(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody SellTransactionRequest request) {
+        var outcome = sellTransactionService.sell(
+                jwt.getSubject(),
+                request.toCommand());
+        var response = ApiResponse.success(
+                TransactionView.from(outcome.details()));
+        return outcome.idempotentReplay()
+                ? ResponseEntity.ok(response)
+                : ResponseEntity
+                        .status(HttpStatus.CREATED)
+                        .body(response);
     }
 
     @PostMapping("/transactions/buys")

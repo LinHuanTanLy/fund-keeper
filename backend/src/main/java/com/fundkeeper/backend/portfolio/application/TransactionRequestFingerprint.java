@@ -21,6 +21,26 @@ public class TransactionRequestFingerprint {
                 decimal(command.confirmedShares()),
                 value(command.confirmedDate()),
                 value(command.note()));
+        return digest(canonical);
+    }
+
+    public String create(SellTransactionCommand command) {
+        String canonical = String.join(
+                "\u001f",
+                value(command.accountPublicId()),
+                value(command.fundCode()),
+                value(command.sellMode()),
+                decimal(command.expectedAmount()),
+                decimal(command.actualReceivedAmount()),
+                value(command.submittedDate()),
+                value(command.submittedPeriod()),
+                decimal(command.confirmedShares()),
+                value(command.confirmedDate()),
+                value(command.note()));
+        return digest(canonical);
+    }
+
+    private String digest(String canonical) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(canonical.getBytes(StandardCharsets.UTF_8));

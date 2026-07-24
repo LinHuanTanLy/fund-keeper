@@ -16,6 +16,7 @@ import jakarta.persistence.Version;
 
 import com.fundkeeper.backend.portfolio.domain.FundTransaction;
 import com.fundkeeper.backend.portfolio.domain.PendingReason;
+import com.fundkeeper.backend.portfolio.domain.SellMode;
 import com.fundkeeper.backend.portfolio.domain.SubmittedPeriod;
 import com.fundkeeper.backend.portfolio.domain.TransactionStatus;
 import com.fundkeeper.backend.portfolio.domain.TransactionType;
@@ -51,6 +52,10 @@ class FundTransactionJpaEntity {
     private TransactionType type;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "sell_mode", length = 32)
+    private SellMode sellMode;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private TransactionStatus status;
 
@@ -62,6 +67,18 @@ class FundTransactionJpaEntity {
 
     @Column(name = "net_amount", precision = 19, scale = 4)
     private BigDecimal netAmount;
+
+    @Column(name = "expected_amount", precision = 19, scale = 4)
+    private BigDecimal expectedAmount;
+
+    @Column(name = "actual_received_amount", precision = 19, scale = 4)
+    private BigDecimal actualReceivedAmount;
+
+    @Column(name = "removed_cost", precision = 19, scale = 4)
+    private BigDecimal removedCost;
+
+    @Column(name = "realized_profit", precision = 19, scale = 4)
+    private BigDecimal realizedProfit;
 
     @Column(precision = 24, scale = 8)
     private BigDecimal shares;
@@ -123,10 +140,16 @@ class FundTransactionJpaEntity {
         this.requestId = transaction.requestId();
         this.requestFingerprint = transaction.requestFingerprint();
         this.type = transaction.type();
+        this.sellMode = transaction.sellMode();
         this.status = transaction.status();
         this.grossAmount = transaction.grossAmount();
         this.feeAmount = transaction.feeAmount();
         this.netAmount = transaction.netAmount();
+        this.expectedAmount = transaction.expectedAmount();
+        this.actualReceivedAmount =
+                transaction.actualReceivedAmount();
+        this.removedCost = transaction.removedCost();
+        this.realizedProfit = transaction.realizedProfit();
         this.shares = transaction.shares();
         this.submittedDate = transaction.submittedDate();
         this.submittedPeriod = transaction.submittedPeriod();
@@ -157,10 +180,15 @@ class FundTransactionJpaEntity {
                 requestId,
                 requestFingerprint,
                 type,
+                sellMode,
                 status,
                 grossAmount,
                 feeAmount,
                 netAmount,
+                expectedAmount,
+                actualReceivedAmount,
+                removedCost,
+                realizedProfit,
                 shares,
                 submittedDate,
                 submittedPeriod,
