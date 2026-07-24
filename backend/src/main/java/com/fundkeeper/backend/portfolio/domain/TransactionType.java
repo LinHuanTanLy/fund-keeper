@@ -1,5 +1,6 @@
 package com.fundkeeper.backend.portfolio.domain;
 
 public enum TransactionType {
-    BUY
+    BUY,
+    POSITION_ADJUSTMENT
 }

@@ -56,6 +56,7 @@ class PortfolioBuyIntegrationTests {
 
     @BeforeEach
     void cleanAndSeedReferenceData() {
+        jdbcTemplate.update("DELETE FROM portfolio_import_batches");
         jdbcTemplate.update("DELETE FROM fund_transactions");
         jdbcTemplate.update("DELETE FROM fund_positions");
         jdbcTemplate.update("DELETE FROM auth_sessions");

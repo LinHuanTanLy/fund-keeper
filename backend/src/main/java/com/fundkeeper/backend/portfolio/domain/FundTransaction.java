@@ -100,6 +100,53 @@ public record FundTransaction(
                 now);
     }
 
+    public static FundTransaction createPositionAdjustment(
+            long userId,
+            long accountId,
+            long fundId,
+            String requestId,
+            String requestFingerprint,
+            TransactionStatus status,
+            BigDecimal costAmount,
+            BigDecimal currentAmount,
+            BigDecimal shares,
+            LocalDate snapshotDate,
+            SubmittedPeriod submittedPeriod,
+            LocalDate confirmedDate,
+            LocalDate navDate,
+            BigDecimal unitNav,
+            String navSource,
+            String note,
+            Instant now) {
+        return new FundTransaction(
+                null,
+                UUID.randomUUID().toString(),
+                userId,
+                accountId,
+                fundId,
+                requestId,
+                requestFingerprint,
+                TransactionType.POSITION_ADJUSTMENT,
+                status,
+                costAmount,
+                null,
+                currentAmount,
+                shares,
+                snapshotDate,
+                submittedPeriod,
+                snapshotDate,
+                confirmedDate,
+                navDate,
+                unitNav,
+                navSource,
+                null,
+                null,
+                null,
+                note,
+                now,
+                now);
+    }
+
     public boolean appliesToPosition() {
         return status == TransactionStatus.ESTIMATED
                 || status == TransactionStatus.CONFIRMED;

@@ -100,6 +100,27 @@ public class JdbcFundDataRepository implements FundDataRepository {
     }
 
     @Override
+    public Optional<OfficialNav> findLatestOfficialNavOnOrBefore(
+            long fundId,
+            LocalDate navDate) {
+        return first(jdbcTemplate.query(
+                """
+                SELECT nav_date, unit_nav, data_source
+                  FROM fund_navs
+                 WHERE fund_id = ?
+                   AND nav_date <= ?
+                 ORDER BY nav_date DESC
+                 LIMIT 1
+                """,
+                (resultSet, rowNumber) -> new OfficialNav(
+                        resultSet.getObject("nav_date", LocalDate.class),
+                        resultSet.getBigDecimal("unit_nav"),
+                        resultSet.getString("data_source")),
+                fundId,
+                navDate));
+    }
+
+    @Override
     public Optional<PurchaseFeeRule> findPurchaseFeeRule(
             long fundId,
             BigDecimal amount,

@@ -16,6 +16,10 @@ public interface FundDataRepository {
 
     Optional<OfficialNav> findLatestOfficialNav(long fundId);
 
+    Optional<OfficialNav> findLatestOfficialNavOnOrBefore(
+            long fundId,
+            LocalDate navDate);
+
     Optional<PurchaseFeeRule> findPurchaseFeeRule(
             long fundId,
             BigDecimal amount,

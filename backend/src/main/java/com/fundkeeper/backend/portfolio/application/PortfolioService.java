@@ -24,6 +24,7 @@ import com.fundkeeper.backend.portfolio.domain.FundPosition;
 import com.fundkeeper.backend.portfolio.domain.FundTransaction;
 import com.fundkeeper.backend.portfolio.domain.PendingReason;
 import com.fundkeeper.backend.portfolio.domain.PortfolioRepository;
+import com.fundkeeper.backend.portfolio.domain.SnapshotBoundaryRepository;
 import com.fundkeeper.backend.portfolio.domain.TransactionStatus;
 import com.fundkeeper.backend.shared.exception.BusinessException;
 import com.fundkeeper.backend.shared.exception.ErrorCode;
@@ -39,6 +40,7 @@ public class PortfolioService {
     private final FundCatalogService fundCatalogService;
     private final FundDataRepository fundDataRepository;
     private final PortfolioRepository portfolioRepository;
+    private final SnapshotBoundaryRepository snapshotBoundaryRepository;
     private final TradingCalendarService tradingCalendarService;
     private final TransactionRequestFingerprint requestFingerprint;
     private final Clock clock;
@@ -49,6 +51,7 @@ public class PortfolioService {
             FundCatalogService fundCatalogService,
             FundDataRepository fundDataRepository,
             PortfolioRepository portfolioRepository,
+            SnapshotBoundaryRepository snapshotBoundaryRepository,
             TradingCalendarService tradingCalendarService,
             TransactionRequestFingerprint requestFingerprint,
             Clock clock) {
@@ -57,6 +60,7 @@ public class PortfolioService {
         this.fundCatalogService = fundCatalogService;
         this.fundDataRepository = fundDataRepository;
         this.portfolioRepository = portfolioRepository;
+        this.snapshotBoundaryRepository = snapshotBoundaryRepository;
         this.tradingCalendarService = tradingCalendarService;
         this.requestFingerprint = requestFingerprint;
         this.clock = clock;
@@ -97,6 +101,10 @@ public class PortfolioService {
                 tradingCalendarService.effectiveTradeDate(
                         command.submittedDate(),
                         command.submittedPeriod());
+        validateSnapshotBoundary(
+                user.id(),
+                account.id(),
+                effectiveDate);
         validateConfirmedDate(command, effectiveDate);
 
         Calculation calculation = calculate(
@@ -372,6 +380,24 @@ public class PortfolioService {
                     ErrorCode.INVALID_TRANSACTION_DATE,
                     "确认日期不能早于有效交易日");
         }
+    }
+
+    private void validateSnapshotBoundary(
+            long userId,
+            long accountId,
+            LocalDate effectiveDate) {
+        snapshotBoundaryRepository
+                .findLatestCommittedSnapshotAt(userId, accountId)
+                .map(instant -> instant
+                        .atZone(clock.getZone())
+                        .toLocalDate())
+                .filter(snapshotDate ->
+                        !effectiveDate.isAfter(snapshotDate))
+                .ifPresent(snapshotDate -> {
+                    throw new BusinessException(
+                            ErrorCode.TRANSACTION_BEFORE_SNAPSHOT,
+                            "新交易必须晚于最近一次生效快照");
+                });
     }
 
     private LocalDate holdingStartDate(

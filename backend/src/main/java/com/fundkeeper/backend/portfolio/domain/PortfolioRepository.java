@@ -26,4 +26,6 @@ public interface PortfolioRepository {
     FundTransaction saveTransaction(FundTransaction transaction);
 
     FundPosition savePosition(FundPosition position);
+
+    void deletePosition(FundPosition position);
 }

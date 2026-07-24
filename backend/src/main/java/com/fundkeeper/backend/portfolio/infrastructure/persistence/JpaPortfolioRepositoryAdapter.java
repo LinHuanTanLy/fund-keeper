@@ -92,4 +92,13 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
         entity.apply(position);
         return positionRepository.saveAndFlush(entity).toDomain();
     }
+
+    @Override
+    public void deletePosition(FundPosition position) {
+        if (position.id() == null) {
+            return;
+        }
+        positionRepository.deleteById(position.id());
+        positionRepository.flush();
+    }
 }

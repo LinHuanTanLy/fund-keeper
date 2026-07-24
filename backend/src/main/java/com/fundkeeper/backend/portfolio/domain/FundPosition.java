@@ -65,6 +65,36 @@ public record FundPosition(
                 now);
     }
 
+    public static FundPosition fromSnapshot(
+            long userId,
+            long accountId,
+            long fundId,
+            BigDecimal shares,
+            BigDecimal remainingCost,
+            PositionStatus status,
+            LocalDate holdingStartDate,
+            Instant now) {
+        BigDecimal normalizedShares = shares.setScale(
+                SHARE_SCALE,
+                RoundingMode.HALF_UP);
+        BigDecimal normalizedCost = remainingCost.setScale(
+                MONEY_SCALE,
+                RoundingMode.HALF_UP);
+        return new FundPosition(
+                null,
+                UUID.randomUUID().toString(),
+                userId,
+                accountId,
+                fundId,
+                normalizedShares,
+                normalizedCost,
+                averageCost(normalizedCost, normalizedShares),
+                status,
+                holdingStartDate,
+                now,
+                now);
+    }
+
     public FundPosition applyBuy(
             BigDecimal boughtShares,
             BigDecimal grossAmount,
@@ -95,6 +125,33 @@ public record FundPosition(
                 now);
     }
 
+    public FundPosition applySnapshot(
+            BigDecimal snapshotShares,
+            BigDecimal snapshotCost,
+            PositionStatus snapshotStatus,
+            LocalDate snapshotHoldingStartDate,
+            Instant now) {
+        BigDecimal normalizedShares = snapshotShares.setScale(
+                SHARE_SCALE,
+                RoundingMode.HALF_UP);
+        BigDecimal normalizedCost = snapshotCost.setScale(
+                MONEY_SCALE,
+                RoundingMode.HALF_UP);
+        return new FundPosition(
+                id,
+                publicId,
+                userId,
+                accountId,
+                fundId,
+                normalizedShares,
+                normalizedCost,
+                averageCost(normalizedCost, normalizedShares),
+                snapshotStatus,
+                snapshotHoldingStartDate,
+                createdAt,
+                now);
+    }
+
     private static PositionStatus positionStatus(
             TransactionStatus transactionStatus) {
         return transactionStatus == TransactionStatus.CONFIRMED
@@ -105,6 +162,10 @@ public record FundPosition(
     private static BigDecimal averageCost(
             BigDecimal cost,
             BigDecimal shares) {
+        if (shares.signum() <= 0) {
+            throw new IllegalArgumentException(
+                    "Position shares must be positive");
+        }
         return cost.divide(
                 shares,
                 UNIT_COST_SCALE,

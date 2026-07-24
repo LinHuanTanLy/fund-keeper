@@ -1,0 +1,56 @@
+package com.fundkeeper.backend.portfolio.importing.api;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.fundkeeper.backend.portfolio.importing.application.PositionSnapshotImportService;
+import com.fundkeeper.backend.portfolio.importing.application.SnapshotCommitResult;
+import com.fundkeeper.backend.portfolio.importing.application.SnapshotPreflightResult;
+import com.fundkeeper.backend.shared.api.ApiResponse;
+
+@RestController
+@RequestMapping("/api/v1/imports/position-snapshots")
+public class PositionSnapshotImportController {
+
+    private final PositionSnapshotImportService importService;
+
+    public PositionSnapshotImportController(
+            PositionSnapshotImportService importService) {
+        this.importService = importService;
+    }
+
+    @PostMapping(
+            value = "/preflight",
+            consumes = MediaType.APPLICATION_JSON_VALUE)
+    ApiResponse<SnapshotPreflightResult> preflight(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestBody String rawJson) {
+        return ApiResponse.success(
+                importService.preflight(
+                        jwt.getSubject(),
+                        rawJson));
+    }
+
+    @PostMapping("/{batchId}/commit")
+    ResponseEntity<ApiResponse<SnapshotCommitResult>> commit(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable String batchId) {
+        var outcome = importService.commit(
+                jwt.getSubject(),
+                batchId);
+        var body = ApiResponse.success(outcome.result());
+        return outcome.idempotentReplay()
+                ? ResponseEntity.ok(body)
+                : ResponseEntity
+                        .status(HttpStatus.CREATED)
+                        .body(body);
+    }
+}

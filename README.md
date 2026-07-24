@@ -98,6 +98,8 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 | GET | `/api/v1/positions` | 查询当前用户的账户级持仓 |
 | GET | `/api/v1/positions?accountId={accountId}` | 按平台账户筛选持仓 |
 | GET | `/api/v1/positions/valuations` | 查询带盘中估值或正式净值降级的持仓 |
+| POST | `/api/v1/imports/position-snapshots/preflight` | 预检持仓快照 JSON，不修改正式业务数据 |
+| POST | `/api/v1/imports/position-snapshots/{batchId}/commit` | 确认最后一次成功预检并原子写入 |
 
 买入示例：
 
@@ -123,6 +125,11 @@ curl -X POST http://localhost:8080/api/v1/transactions/buys \
 - 有官方净值和可追溯费率：创建 `ESTIMATED` 流水并更新持仓。
 - 用户填写平台确认份额：创建 `CONFIRMED` 流水并更新持仓。
 - 暂缺净值或费率：保留为 `PENDING`，不伪造份额、不更新持仓。
+
+持仓快照 JSON 使用两阶段导入。预检会返回将新增、校准、保持或清仓的逐行
+结果；只有 `READY_TO_COMMIT` 批次才能确认。相同 `batchId` 重复确认不会
+重复记账，任意一行写入失败会整批回滚。协议和示例见
+[持仓快照 JSON 导入](docs/position-snapshot-import.md)。
 
 基金目录、逐日交易日历和正式净值已经提供可替换的数据同步层。个人开发环境默认可使用免费的东方财富公开页面数据和上交所休市安排；Tushare 作为可选适配器保留。业务请求始终读取本地 MySQL，第三方同步失败时保留旧数据，不会清空或伪造数据。申购费率仍需独立、可追溯的数据来源；缺失时交易保持 `PENDING`。
 
