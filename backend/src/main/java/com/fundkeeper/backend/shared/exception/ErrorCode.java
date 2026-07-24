@@ -1,0 +1,38 @@
+package com.fundkeeper.backend.shared.exception;
+
+import org.springframework.http.HttpStatus;
+
+public enum ErrorCode {
+    INVALID_REQUEST(HttpStatus.BAD_REQUEST),
+    INVALID_EMAIL_CODE(HttpStatus.UNPROCESSABLE_CONTENT),
+    EMAIL_CODE_RATE_LIMITED(HttpStatus.TOO_MANY_REQUESTS),
+    EMAIL_ALREADY_REGISTERED(HttpStatus.CONFLICT),
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED),
+    INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED),
+    PASSWORD_POLICY_VIOLATION(HttpStatus.UNPROCESSABLE_CONTENT),
+    ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND),
+    ACCOUNT_NAME_CONFLICT(HttpStatus.CONFLICT),
+    ACCOUNT_ARCHIVED(HttpStatus.CONFLICT),
+    ACCOUNT_HAS_OPEN_ACTIVITY(HttpStatus.CONFLICT),
+    LAST_ACTIVE_ACCOUNT(HttpStatus.CONFLICT),
+    FUND_NOT_FOUND(HttpStatus.NOT_FOUND),
+    FUND_NOT_SUPPORTED(HttpStatus.UNPROCESSABLE_CONTENT),
+    TRADING_CALENDAR_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
+    TRANSACTION_NOT_FOUND(HttpStatus.NOT_FOUND),
+    INVALID_TRANSACTION_DATE(HttpStatus.UNPROCESSABLE_CONTENT),
+    IDEMPOTENCY_CONFLICT(HttpStatus.CONFLICT),
+    AUTHENTICATION_REQUIRED(HttpStatus.UNAUTHORIZED),
+    ACCESS_DENIED(HttpStatus.FORBIDDEN),
+    SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
+    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR);
+
+    private final HttpStatus httpStatus;
+
+    ErrorCode(HttpStatus httpStatus) {
+        this.httpStatus = httpStatus;
+    }
+
+    public HttpStatus httpStatus() {
+        return httpStatus;
+    }
+}

@@ -79,6 +79,15 @@ flowchart LR
 - Nginx 或 Caddy；
 - 单体架构。
 
+### 4.1 基金参考数据
+
+基金目录、交易日历和正式净值通过
+`FundReferenceDataProvider` 端口接入，先幂等同步到 MySQL，业务接口不直连第三方。
+个人开发环境可使用东方财富公开页面数据和上交所年度休市安排，Tushare 作为可选适配器；
+公开或商业部署必须重新确认数据授权。
+申购费率与盘中估值是两条独立数据链路，不能从净值接口推断，也不能互相覆盖。
+详细说明见 [基金参考数据接入](fund-reference-data.md)。
+
 ## 5. 核心领域模型
 
 ### 5.1 用户与平台账户
@@ -130,6 +139,8 @@ V1 支持的流水类型：
 - `PENDING`：等待净值或确认；
 - `ESTIMATED`：系统根据金额、时间、净值和默认费率推算；
 - `CONFIRMED`：已经通过平台确认数据或人工校准；
+- `NEEDS_CALIBRATION`：外部快照与系统结果存在差异；
+- `CANCELLED`：用户确认外部交易未完成；
 - `REVERSED`：原记录已被冲正。
 
 估算数据必须在界面上明确标识，不能伪装成已确认数据。
@@ -143,7 +154,9 @@ V1 支持的流水类型：
 - 平台账户；
 - 基金代码；
 - 购买金额；
-- 完整购买时间，例如 `2026-07-23 14:35`。
+- 提交日期，例如 `2026-07-23`；
+- 提交时段：`BEFORE_15` 或 `AFTER_15`；
+- 可选的平台确认份额和确认日期。
 
 后端负责：
 
@@ -206,14 +219,18 @@ JSON 是系统统一导入协议和高级入口，普通用户不需要手写 JS
   "schemaVersion": "1.0",
   "importType": "TRANSACTION_BATCH",
   "batchId": "transactions-20260723-001",
-  "accountId": 1001,
+  "account": {
+    "name": "我的支付宝",
+    "platform": "ALIPAY"
+  },
   "transactions": [
     {
       "rowId": "row-001",
       "fundCode": "005827",
       "type": "BUY",
       "amount": 5000.00,
-      "submittedAt": "2026-06-01T14:30:00+08:00"
+      "submittedDate": "2026-06-01",
+      "submittedPeriod": "BEFORE_15"
     }
   ]
 }
@@ -354,12 +371,13 @@ V1 使用移动平均成本法：
 第一版不自研估值算法，使用第三方数据并通过统一适配接口接入：
 
 ```java
-public interface FundValuationProvider {
-    FundEstimate getEstimate(String fundCode);
+public interface IntradayValuationProvider {
+    List<IntradayValuation> fetchLatest(Set<String> fundCodes);
 }
 ```
 
-实际供应商、授权方式、调用额度和费用仍需单独调研确认。
+学习版已经接入东方财富公开估值列表，并使用 Redis 分页索引避免每分钟全量
+抓取。实际商用供应商、授权方式、调用额度和费用仍需单独确认。
 
 ## 13. MySQL 与 Redis 边界
 
@@ -495,4 +513,3 @@ V1 最终部署到公网：
 10. 接入第三方估值适配层与 Redis 缓存；
 11. 完成 Flutter 全流程；
 12. 补齐测试、日志、备份和公网部署。
-
