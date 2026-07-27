@@ -132,6 +132,18 @@ class PositionSnapshotImportIntegrationTests {
                 .andExpect(jsonPath(
                         "$.data.rows[0].calculatedShares",
                         is(50.0)))
+                .andExpect(jsonPath(
+                        "$.data.calibrationCount",
+                        is(0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].reviewStatus",
+                        is("NONE")))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].currentPosition")
+                        .doesNotExist())
+                .andExpect(jsonPath(
+                        "$.data.rows[0].targetPosition.shares",
+                        is(50.0)))
                 .andExpect(jsonPath("$.data.warningCount", is(1)));
 
         assertCount("fund_accounts", 1);
@@ -185,6 +197,217 @@ class PositionSnapshotImportIntegrationTests {
                 .andExpect(jsonPath(
                         "$.data.status",
                         is("COMMITTED")));
+    }
+
+    @Test
+    void calibrationPreflightShowsDifferenceBeforeAtomicCommit()
+            throws Exception {
+        String token = registerAndLogin();
+        String seed = snapshot(
+                "snapshot-calibration-seed-001",
+                "PARTIAL",
+                "默认账户",
+                "OTHER",
+                "2026-07-24T12:00:00+08:00",
+                confirmedPosition("000001", "90", "100", "50"));
+        preflight(token, seed)
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("READY_TO_COMMIT")));
+        commit(token, "snapshot-calibration-seed-001")
+                .andExpect(status().isCreated());
+
+        String calibration = snapshot(
+                "snapshot-calibration-review-001",
+                "PARTIAL",
+                "默认账户",
+                "OTHER",
+                "2026-07-24T13:00:00+08:00",
+                """
+                {
+                  "fundCode": "000001",
+                  "costAmount": 120.00,
+                  "currentAmount": 130.00,
+                  "holdingStartDate": "2026-06-15",
+                  "confirmedShares": 60
+                }
+                """);
+        preflight(token, calibration)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("READY_TO_COMMIT")))
+                .andExpect(jsonPath(
+                        "$.data.calibrationCount",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].action",
+                        is("CALIBRATE")))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].reviewStatus",
+                        is("NEEDS_CALIBRATION")))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].currentPosition.shares",
+                        is(50.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].currentPosition.costAmount",
+                        is(90.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].currentPosition.status",
+                        is("CONFIRMED")))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].currentPosition.holdingStartDate",
+                        is("2026-07-01")))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].targetPosition.shares",
+                        is(60.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].targetPosition.costAmount",
+                        is(120.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].targetPosition.status",
+                        is("CONFIRMED")))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].targetPosition.holdingStartDate",
+                        is("2026-06-15")))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].difference.sharesDelta",
+                        is(10.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].difference.costAmountDelta",
+                        is(30.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].difference.statusChanged",
+                        is(false)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].difference.holdingStartDateChanged",
+                        is(true)));
+
+        org.assertj.core.api.Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT shares FROM fund_positions",
+                                java.math.BigDecimal.class))
+                .isEqualByComparingTo("50.00000000");
+        org.assertj.core.api.Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT remaining_cost FROM fund_positions",
+                                java.math.BigDecimal.class))
+                .isEqualByComparingTo("90.0000");
+        assertCount("fund_transactions", 1);
+
+        commit(token, "snapshot-calibration-review-001")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath(
+                        "$.data.appliedCount",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].action",
+                        is("CALIBRATE")));
+        org.assertj.core.api.Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT shares FROM fund_positions",
+                                java.math.BigDecimal.class))
+                .isEqualByComparingTo("60.00000000");
+        org.assertj.core.api.Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT remaining_cost FROM fund_positions",
+                                java.math.BigDecimal.class))
+                .isEqualByComparingTo("120.0000");
+        assertCount("fund_transactions", 2);
+
+        preflight(token, calibration)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("COMMITTED")))
+                .andExpect(jsonPath(
+                        "$.data.calibrationCount",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].reviewStatus",
+                        is("NEEDS_CALIBRATION")));
+    }
+
+    @Test
+    void legacyStoredPreflightWithoutDifferenceFieldsStillReplays()
+            throws Exception {
+        String token = registerAndLogin();
+        String body = snapshot(
+                "snapshot-legacy-preview-001",
+                "PARTIAL",
+                "默认账户",
+                "OTHER",
+                "2026-07-24T14:00:00+08:00",
+                confirmedPosition("000001", "90", "100", "50"));
+        preflight(token, body)
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("READY_TO_COMMIT")));
+        commit(token, "snapshot-legacy-preview-001")
+                .andExpect(status().isCreated());
+        jdbcTemplate.update(
+                """
+                UPDATE portfolio_import_batches
+                   SET preflight_json = ?
+                 WHERE batch_id = 'snapshot-legacy-preview-001'
+                """,
+                """
+                {
+                  "batchId": "snapshot-legacy-preview-001",
+                  "status": "READY_TO_COMMIT",
+                  "schemaVersion": "1.0",
+                  "importType": "POSITION_SNAPSHOT",
+                  "snapshotMode": "PARTIAL",
+                  "snapshotAt": "2026-07-24T14:00:00+08:00",
+                  "account": null,
+                  "totalCount": 1,
+                  "importableCount": 1,
+                  "warningCount": 0,
+                  "errorCount": 0,
+                  "rows": [
+                    {
+                      "row": 1,
+                      "fundCode": "000001",
+                      "fundName": "测试一号基金",
+                      "action": "ADD",
+                      "positionStatus": "CONFIRMED",
+                      "costAmount": 90,
+                      "currentAmount": 100,
+                      "calculatedShares": 50,
+                      "holdingStartDate": "2026-07-01",
+                      "navDate": null,
+                      "unitNav": null,
+                      "navSource": null,
+                      "issues": []
+                    }
+                  ],
+                  "issues": []
+                }
+                """);
+
+        preflight(token, body)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("COMMITTED")))
+                .andExpect(jsonPath(
+                        "$.data.calibrationCount",
+                        is(0)))
+                .andExpect(jsonPath(
+                        "$.data.rows",
+                        hasSize(1)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].reviewStatus",
+                        is("NONE")))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].currentPosition")
+                        .doesNotExist())
+                .andExpect(jsonPath(
+                        "$.data.rows[0].targetPosition")
+                        .doesNotExist())
+                .andExpect(jsonPath(
+                        "$.data.rows[0].difference")
+                        .doesNotExist());
     }
 
     @Test
@@ -308,6 +531,24 @@ class PositionSnapshotImportIntegrationTests {
                 .andExpect(jsonPath(
                         "$.data.rows[0].action",
                         is("CLEAR")))
+                .andExpect(jsonPath(
+                        "$.data.calibrationCount",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].reviewStatus",
+                        is("NEEDS_CALIBRATION")))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].currentPosition.shares",
+                        is(50.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].targetPosition.shares",
+                        is(0.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].difference.sharesDelta",
+                        is(-50.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].difference.costAmountDelta",
+                        is(-90.0)))
                 .andExpect(jsonPath(
                         "$.data.rows[0].issues[0].code",
                         is("POSITION_WILL_BE_CLEARED")));

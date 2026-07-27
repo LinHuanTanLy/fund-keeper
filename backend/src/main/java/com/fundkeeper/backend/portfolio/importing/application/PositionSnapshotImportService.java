@@ -680,6 +680,15 @@ public class PositionSnapshotImportService {
             SnapshotAction action = rejected
                     ? SnapshotAction.REJECT
                     : action(existing, shares, value, status);
+            SnapshotPositionPreview currentPreview =
+                    positionPreview(existing);
+            SnapshotPositionPreview targetPreview = rejected
+                    ? null
+                    : targetPreview(
+                            shares,
+                            normalizeMoney(value.costAmount()),
+                            status,
+                            value.holdingStartDate());
             SnapshotRowPreview preview = new SnapshotRowPreview(
                     row,
                     value.fundCode(),
@@ -693,7 +702,13 @@ public class PositionSnapshotImportService {
                     nav == null ? null : nav.navDate(),
                     nav == null ? null : nav.unitNav(),
                     nav == null ? null : nav.dataSource(),
-                    List.copyOf(rowIssues));
+                    List.copyOf(rowIssues),
+                    reviewStatus(action),
+                    currentPreview,
+                    targetPreview,
+                    difference(
+                            currentPreview,
+                            targetPreview));
             previews.add(preview);
             issues.addAll(rowIssues);
             if (!rejected) {
@@ -737,6 +752,16 @@ public class PositionSnapshotImportService {
                         "positions",
                         "POSITION_WILL_BE_CLEARED",
                         "FULL_ACCOUNT 未包含该基金，确认后将清仓");
+                SnapshotPositionPreview currentPreview =
+                        positionPreview(existing);
+                SnapshotPositionPreview targetPreview =
+                        targetPreview(
+                                BigDecimal.ZERO.setScale(
+                                        SHARE_SCALE),
+                                BigDecimal.ZERO.setScale(
+                                        MONEY_SCALE),
+                                null,
+                                null);
                 issues.add(warning);
                 previews.add(new SnapshotRowPreview(
                         row,
@@ -751,7 +776,13 @@ public class PositionSnapshotImportService {
                         null,
                         null,
                         null,
-                        List.of(warning)));
+                        List.of(warning),
+                        SnapshotReviewStatus.NEEDS_CALIBRATION,
+                        currentPreview,
+                        targetPreview,
+                        difference(
+                                currentPreview,
+                                targetPreview)));
                 plans.add(new PositionPlan(
                         row,
                         fund,
@@ -776,6 +807,10 @@ public class PositionSnapshotImportService {
                 .limit(document.positions().size())
                 .filter(row -> row.action() != SnapshotAction.REJECT)
                 .count();
+        int calibrationCount = (int) previews.stream()
+                .filter(row -> row.reviewStatus()
+                        == SnapshotReviewStatus.NEEDS_CALIBRATION)
+                .count();
         ImportBatchStatus status = errorCount == 0
                 ? ImportBatchStatus.READY_TO_COMMIT
                 : ImportBatchStatus.PREFLIGHT_FAILED;
@@ -791,6 +826,7 @@ public class PositionSnapshotImportService {
                 importableCount,
                 warningCount,
                 errorCount,
+                calibrationCount,
                 List.copyOf(previews),
                 List.copyOf(issues));
         return new Analysis(
@@ -890,6 +926,56 @@ public class PositionSnapshotImportService {
         return unchanged
                 ? SnapshotAction.UNCHANGED
                 : SnapshotAction.CALIBRATE;
+    }
+
+    private SnapshotReviewStatus reviewStatus(
+            SnapshotAction action) {
+        return action == SnapshotAction.CALIBRATE
+                        || action == SnapshotAction.CLEAR
+                ? SnapshotReviewStatus.NEEDS_CALIBRATION
+                : SnapshotReviewStatus.NONE;
+    }
+
+    private SnapshotPositionPreview positionPreview(
+            FundPosition position) {
+        if (position == null) {
+            return null;
+        }
+        return new SnapshotPositionPreview(
+                position.shares(),
+                position.remainingCost(),
+                position.status(),
+                position.holdingStartDate());
+    }
+
+    private SnapshotPositionPreview targetPreview(
+            BigDecimal shares,
+            BigDecimal costAmount,
+            PositionStatus status,
+            LocalDate holdingStartDate) {
+        return new SnapshotPositionPreview(
+                shares,
+                costAmount,
+                status,
+                holdingStartDate);
+    }
+
+    private SnapshotDifferencePreview difference(
+            SnapshotPositionPreview current,
+            SnapshotPositionPreview target) {
+        if (current == null || target == null) {
+            return null;
+        }
+        return new SnapshotDifferencePreview(
+                target.shares().subtract(current.shares()),
+                target.costAmount().subtract(
+                        current.costAmount()),
+                !Objects.equals(
+                        current.status(),
+                        target.status()),
+                !Objects.equals(
+                        current.holdingStartDate(),
+                        target.holdingStartDate()));
     }
 
     private FundTransaction adjustment(
@@ -1002,6 +1088,7 @@ public class PositionSnapshotImportService {
                 0,
                 0,
                 parsed.issues().size(),
+                0,
                 List.of(),
                 parsed.issues());
     }
@@ -1026,6 +1113,7 @@ public class PositionSnapshotImportService {
                 0,
                 count(issues, ImportIssueSeverity.WARNING),
                 count(issues, ImportIssueSeverity.ERROR),
+                0,
                 rows,
                 List.copyOf(issues));
     }
@@ -1080,6 +1168,7 @@ public class PositionSnapshotImportService {
                 0,
                 0,
                 1,
+                0,
                 List.of(),
                 List.of(issue));
     }
@@ -1116,7 +1205,11 @@ public class PositionSnapshotImportService {
                     null,
                     null,
                     null,
-                    rowIssues));
+                    rowIssues,
+                    SnapshotReviewStatus.NONE,
+                    null,
+                    null,
+                    null));
         }
         return List.copyOf(rows);
     }

@@ -38,6 +38,36 @@ Authorization: Bearer <accessToken>
 缺少 `confirmedShares` 时，服务端使用快照日期之前最近的正式净值，根据
 `currentAmount` 推算份额，并返回 `SHARES_ESTIMATED` 警告。
 
+预检响应同时返回 `calibrationCount`。`CALIBRATE` 和 `CLEAR` 行的
+`reviewStatus` 为 `NEEDS_CALIBRATION`，并提供：
+
+```json
+{
+  "currentPosition": {
+    "shares": 50.00000000,
+    "costAmount": 90.0000,
+    "status": "CONFIRMED",
+    "holdingStartDate": "2026-07-01"
+  },
+  "targetPosition": {
+    "shares": 60.00000000,
+    "costAmount": 120.0000,
+    "status": "CONFIRMED",
+    "holdingStartDate": "2026-06-15"
+  },
+  "difference": {
+    "sharesDelta": 10.00000000,
+    "costAmountDelta": 30.0000,
+    "statusChanged": false,
+    "holdingStartDateChanged": true
+  }
+}
+```
+
+`NEEDS_CALIBRATION` 是暂存批次中的审阅状态。预检不会把正式持仓改成
+`NEEDS_CALIBRATION`；用户放弃或尚未确认时，当前资产与收益口径保持不变。
+`ADD`、`UNCHANGED` 和 `REJECT` 的 `reviewStatus` 为 `NONE`。
+
 ### 2.2 确认
 
 ```http
@@ -48,6 +78,9 @@ Authorization: Bearer <accessToken>
 确认前服务端会重新计算计划指纹。如果账户、持仓或快照边界在预检后发生变化，
 确认会被拒绝，用户必须重新预检。相同 `batchId` 重复确认返回第一次结果，
 不会重复创建流水。
+
+确认 `CALIBRATE` 后，服务端创建一笔 `POSITION_ADJUSTMENT` 审计流水，再用
+`targetPosition` 替换当前持仓投影；这些写入处于同一事务。
 
 ## 3. FULL_ACCOUNT 与 PARTIAL
 

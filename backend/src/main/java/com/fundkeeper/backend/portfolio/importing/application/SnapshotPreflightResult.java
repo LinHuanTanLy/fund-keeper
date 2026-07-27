@@ -18,8 +18,14 @@ public record SnapshotPreflightResult(
         int importableCount,
         int warningCount,
         int errorCount,
+        Integer calibrationCount,
         List<SnapshotRowPreview> rows,
         List<ImportIssue> issues) {
+
+    public SnapshotPreflightResult {
+        calibrationCount =
+                calibrationCount == null ? 0 : calibrationCount;
+    }
 
     public SnapshotPreflightResult withStatus(
             ImportBatchStatus newStatus) {
@@ -35,6 +41,7 @@ public record SnapshotPreflightResult(
                 importableCount,
                 warningCount,
                 errorCount,
+                calibrationCount,
                 rows,
                 issues);
     }

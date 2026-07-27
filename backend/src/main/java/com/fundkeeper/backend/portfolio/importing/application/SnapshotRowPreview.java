@@ -20,5 +20,16 @@ public record SnapshotRowPreview(
         LocalDate navDate,
         BigDecimal unitNav,
         String navSource,
-        List<ImportIssue> issues) {
+        List<ImportIssue> issues,
+        SnapshotReviewStatus reviewStatus,
+        SnapshotPositionPreview currentPosition,
+        SnapshotPositionPreview targetPosition,
+        SnapshotDifferencePreview difference) {
+
+    public SnapshotRowPreview {
+        issues = issues == null ? List.of() : List.copyOf(issues);
+        reviewStatus = reviewStatus == null
+                ? SnapshotReviewStatus.NONE
+                : reviewStatus;
+    }
 }

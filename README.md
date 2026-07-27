@@ -143,7 +143,9 @@ curl -X POST http://localhost:8080/api/v1/transactions/buys \
 [手动卖出](docs/manual-sell.md)。
 
 持仓快照 JSON 使用两阶段导入。预检会返回将新增、校准、保持或清仓的逐行
-结果；只有 `READY_TO_COMMIT` 批次才能确认。相同 `batchId` 重复确认不会
+结果；校准和清仓行同时返回当前值、目标值、变化量和
+`NEEDS_CALIBRATION` 审阅状态。只有 `READY_TO_COMMIT` 批次才能确认。
+相同 `batchId` 重复确认不会
 重复记账，任意一行写入失败会整批回滚。协议和示例见
 [持仓快照 JSON 导入](docs/position-snapshot-import.md)。
 
