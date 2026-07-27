@@ -281,6 +281,24 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
     }
 
     @Override
+    public boolean existsPositionAffectingTransactionAfter(
+            long userId,
+            long accountId,
+            long fundId,
+            long transactionId) {
+        return transactionRepository
+                .existsByUserIdAndAccountIdAndFundIdAndIdGreaterThanAndStatusIn(
+                        userId,
+                        accountId,
+                        fundId,
+                        transactionId,
+                        List.of(
+                                TransactionStatus.ESTIMATED,
+                                TransactionStatus.CONFIRMED,
+                                TransactionStatus.NEEDS_CALIBRATION));
+    }
+
+    @Override
     public List<FundPosition> findPositionsByUserId(long userId) {
         return positionRepository.findAllByUserIdOrderByCreatedAtAsc(userId)
                 .stream()

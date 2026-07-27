@@ -93,7 +93,9 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 |---|---|---|
 | GET | `/api/v1/funds/{fundCode}` | 按六位代码查询支持的基金 |
 | POST | `/api/v1/transactions/buys` | 按金额录入一笔买入 |
+| POST | `/api/v1/transactions/{transactionId}/buy-confirmation` | 用平台份额确认待处理或估算买入 |
 | POST | `/api/v1/transactions/sells` | 录入部分卖出或全部卖出 |
+| POST | `/api/v1/transactions/{transactionId}/cancel` | 撤销未完成的买入或卖出 |
 | GET | `/api/v1/transactions/{transactionId}` | 查询当前用户的一笔交易 |
 | GET | `/api/v1/transactions/requests/{requestId}` | 超时后按幂等键查询原结果 |
 | GET | `/api/v1/positions` | 查询当前用户的账户级持仓 |
@@ -128,6 +130,11 @@ curl -X POST http://localhost:8080/api/v1/transactions/buys \
 - 有官方净值和可追溯费率：创建 `ESTIMATED` 流水并更新持仓。
 - 用户填写平台确认份额：创建 `CONFIRMED` 流水并更新持仓。
 - 暂缺净值或费率：保留为 `PENDING`，不伪造份额、不更新持仓。
+
+`PENDING` 或新创建的 `ESTIMATED` 买入可以在取得平台份额后确认，也可以
+标记为未完成。估算买入会通过交易创建时保存的前置持仓快照重建，不能在已有
+后续交易时局部修改。详细契约见
+[手动买入与确认](docs/manual-buy.md)。
 
 手动卖出支持 `PARTIAL` 和 `FULL`。部分卖出可以按预计到账金额和正式净值
 估算减少份额，也可以填写平台确认份额和实际到账金额；服务端使用移动平均

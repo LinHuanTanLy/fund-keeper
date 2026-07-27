@@ -690,6 +690,19 @@ class PortfolioBuyIntegrationTests {
         org.assertj.core.api.Assertions.assertThat(
                         count("fund_positions"))
                 .isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                """
+                                SELECT COUNT(*)
+                                  FROM fund_transactions
+                                 WHERE public_id = ?
+                                   AND position_shares_before = 0
+                                   AND position_cost_before = 0
+                                   AND position_status_before = 'CONFIRMED'
+                                """,
+                                Integer.class,
+                                transactionId))
+                .isEqualTo(1);
     }
 
     @Test
@@ -771,10 +784,26 @@ class PortfolioBuyIntegrationTests {
     }
 
     @Test
-    void estimatedBuyRequiresCalibrationInsteadOfUnsafeMutation()
+    void estimatedBuyConfirmationRebuildsPositionAndIsIdempotent()
             throws Exception {
         String token = registerAndLogin(USER_A);
         String accountId = firstAccountId(token);
+        mockMvc.perform(post("/api/v1/transactions/buys")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyBody(
+                                "buy-before-estimated-confirm-001",
+                                accountId,
+                                "000001",
+                                "1015.00",
+                                "2026-07-20",
+                                "BEFORE_15",
+                                "500.00000000",
+                                "2026-07-21")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("CONFIRMED")));
         MvcResult estimated = mockMvc.perform(
                         post("/api/v1/transactions/buys")
                                 .header(
@@ -783,7 +812,7 @@ class PortfolioBuyIntegrationTests {
                                 .contentType(
                                         MediaType.APPLICATION_JSON)
                                 .content(buyBody(
-                                        "buy-estimated-state-001",
+                                        "buy-estimated-confirm-001",
                                         accountId,
                                         "000001",
                                         "1015.00",
@@ -799,6 +828,303 @@ class PortfolioBuyIntegrationTests {
         String transactionId = JsonPath.read(
                 estimated.getResponse().getContentAsString(),
                 "$.data.id");
+        String confirmation = """
+                {
+                  "confirmedShares": 480.00000000,
+                  "confirmedDate": "2026-07-22"
+                }
+                """;
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mockMvc.perform(post(
+                                    "/api/v1/transactions/{id}/buy-confirmation",
+                                    transactionId)
+                            .header(
+                                    "Authorization",
+                                    bearer(token))
+                            .contentType(
+                                    MediaType.APPLICATION_JSON)
+                            .content(confirmation))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath(
+                            "$.data.status",
+                            is("CONFIRMED")))
+                    .andExpect(jsonPath(
+                            "$.data.shares",
+                            is(480.0)))
+                    .andExpect(jsonPath(
+                            "$.data.confirmedDate",
+                            is("2026-07-22")));
+        }
+
+        mockMvc.perform(get("/api/v1/positions")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data[0].shares",
+                        is(980.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].remainingCost",
+                        is(2030.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].averageUnitCost",
+                        is(2.07142857)))
+                .andExpect(jsonPath(
+                        "$.data[0].status",
+                        is("CONFIRMED")))
+                .andExpect(jsonPath(
+                        "$.data[0].holdingStartDate",
+                        is("2026-07-21")));
+
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{id}/buy-confirmation",
+                                transactionId)
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "confirmedShares": 481.00000000,
+                                  "confirmedDate": "2026-07-22"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("BUY_STATE_CONFLICT")));
+    }
+
+    @Test
+    void estimatedBuyCancellationDeletesNewPositionAndIsIdempotent()
+            throws Exception {
+        String token = registerAndLogin(USER_A);
+        String accountId = firstAccountId(token);
+        MvcResult estimated = mockMvc.perform(
+                        post("/api/v1/transactions/buys")
+                                .header(
+                                        "Authorization",
+                                        bearer(token))
+                                .contentType(
+                                        MediaType.APPLICATION_JSON)
+                                .content(buyBody(
+                                        "buy-estimated-cancel-empty-001",
+                                        accountId,
+                                        "000001",
+                                        "1015.00",
+                                        "2026-07-20",
+                                        "BEFORE_15",
+                                        null,
+                                        null)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String transactionId = transactionId(estimated);
+
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mockMvc.perform(post(
+                                    "/api/v1/transactions/{id}/cancel",
+                                    transactionId)
+                            .header(
+                                    "Authorization",
+                                    bearer(token))
+                            .contentType(
+                                    MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {
+                                      "reason": "平台最终未受理"
+                                    }
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath(
+                            "$.data.status",
+                            is("CANCELLED")));
+        }
+        mockMvc.perform(get("/api/v1/positions")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(0)));
+    }
+
+    @Test
+    void estimatedBuyCancellationRestoresExistingPosition()
+            throws Exception {
+        String token = registerAndLogin(USER_A);
+        String accountId = firstAccountId(token);
+        mockMvc.perform(post("/api/v1/transactions/buys")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyBody(
+                                "buy-before-estimated-cancel-001",
+                                accountId,
+                                "000001",
+                                "1015.00",
+                                "2026-07-20",
+                                "BEFORE_15",
+                                "500.00000000",
+                                "2026-07-21")))
+                .andExpect(status().isCreated());
+        MvcResult estimated = mockMvc.perform(
+                        post("/api/v1/transactions/buys")
+                                .header(
+                                        "Authorization",
+                                        bearer(token))
+                                .contentType(
+                                        MediaType.APPLICATION_JSON)
+                                .content(buyBody(
+                                        "buy-estimated-cancel-restore-001",
+                                        accountId,
+                                        "000001",
+                                        "1015.00",
+                                        "2026-07-20",
+                                        "BEFORE_15",
+                                        null,
+                                        null)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{id}/cancel",
+                                transactionId(estimated))
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reason": "撤销估算加仓"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("CANCELLED")));
+        mockMvc.perform(get("/api/v1/positions")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data[0].shares",
+                        is(500.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].remainingCost",
+                        is(1015.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].averageUnitCost",
+                        is(2.03)))
+                .andExpect(jsonPath(
+                        "$.data[0].status",
+                        is("CONFIRMED")))
+                .andExpect(jsonPath(
+                        "$.data[0].holdingStartDate",
+                        is("2026-07-21")));
+    }
+
+    @Test
+    void estimatedBuyWithLaterTransactionRequiresHistoryRebuild()
+            throws Exception {
+        String token = registerAndLogin(USER_A);
+        String accountId = firstAccountId(token);
+        MvcResult first = mockMvc.perform(
+                        post("/api/v1/transactions/buys")
+                                .header(
+                                        "Authorization",
+                                        bearer(token))
+                                .contentType(
+                                        MediaType.APPLICATION_JSON)
+                                .content(buyBody(
+                                        "buy-estimated-before-later-001",
+                                        accountId,
+                                        "000001",
+                                        "1015.00",
+                                        "2026-07-20",
+                                        "BEFORE_15",
+                                        null,
+                                        null)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        mockMvc.perform(post("/api/v1/transactions/buys")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyBody(
+                                "buy-estimated-later-001",
+                                accountId,
+                                "000001",
+                                "2030.00",
+                                "2026-07-20",
+                                "BEFORE_15",
+                                null,
+                                null)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{id}/buy-confirmation",
+                                transactionId(first))
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "confirmedShares": 499.00000000,
+                                  "confirmedDate": "2026-07-21"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("BUY_STATE_CONFLICT")));
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{id}/cancel",
+                                transactionId(first))
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reason": "不能局部撤销"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("BUY_STATE_CONFLICT")));
+        mockMvc.perform(get("/api/v1/positions")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data[0].shares",
+                        is(1500.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].remainingCost",
+                        is(3045.0)));
+    }
+
+    @Test
+    void historicalEstimatedBuyWithoutSnapshotIsRejected()
+            throws Exception {
+        String token = registerAndLogin(USER_A);
+        String accountId = firstAccountId(token);
+        MvcResult estimated = mockMvc.perform(
+                        post("/api/v1/transactions/buys")
+                                .header(
+                                        "Authorization",
+                                        bearer(token))
+                                .contentType(
+                                        MediaType.APPLICATION_JSON)
+                                .content(buyBody(
+                                        "buy-estimated-legacy-001",
+                                        accountId,
+                                        "000001",
+                                        "1015.00",
+                                        "2026-07-20",
+                                        "BEFORE_15",
+                                        null,
+                                        null)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String transactionId = transactionId(estimated);
+        jdbcTemplate.update(
+                """
+                UPDATE fund_transactions
+                   SET position_shares_before = NULL,
+                       position_cost_before = NULL,
+                       position_status_before = NULL,
+                       position_holding_start_date_before = NULL
+                 WHERE public_id = ?
+                """,
+                transactionId);
 
         mockMvc.perform(post(
                                 "/api/v1/transactions/{id}/buy-confirmation",
@@ -815,21 +1141,6 @@ class PortfolioBuyIntegrationTests {
                 .andExpect(jsonPath(
                         "$.code",
                         is("BUY_STATE_CONFLICT")));
-        mockMvc.perform(post(
-                                "/api/v1/transactions/{id}/cancel",
-                                transactionId)
-                        .header("Authorization", bearer(token))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "reason": "尝试撤销估算记录"
-                                }
-                                """))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath(
-                        "$.code",
-                        is("BUY_STATE_CONFLICT")));
-
         mockMvc.perform(get("/api/v1/positions")
                         .header("Authorization", bearer(token)))
                 .andExpect(status().isOk())
@@ -837,19 +1148,77 @@ class PortfolioBuyIntegrationTests {
                         "$.data[0].shares",
                         is(500.0)))
                 .andExpect(jsonPath(
-                        "$.data[0].remainingCost",
-                        is(1015.0)))
-                .andExpect(jsonPath(
                         "$.data[0].status",
                         is("ESTIMATED")));
-        mockMvc.perform(get(
-                                "/api/v1/transactions/{id}",
-                                transactionId)
+    }
+
+    @Test
+    void pendingBuyWithLaterPositionTransactionRequiresHistoryRebuild()
+            throws Exception {
+        String token = registerAndLogin(USER_A);
+        String accountId = firstAccountId(token);
+        MvcResult pending = mockMvc.perform(
+                        post("/api/v1/transactions/buys")
+                                .header(
+                                        "Authorization",
+                                        bearer(token))
+                                .contentType(
+                                        MediaType.APPLICATION_JSON)
+                                .content(buyBody(
+                                        "buy-pending-before-later-001",
+                                        accountId,
+                                        "000003",
+                                        "1000.00",
+                                        "2026-07-20",
+                                        "BEFORE_15",
+                                        null,
+                                        null)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("PENDING")))
+                .andReturn();
+        mockMvc.perform(post("/api/v1/transactions/buys")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyBody(
+                                "buy-confirmed-after-pending-001",
+                                accountId,
+                                "000003",
+                                "400.00",
+                                "2026-07-20",
+                                "BEFORE_15",
+                                "100.00000000",
+                                "2026-07-21")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("CONFIRMED")));
+
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{id}/buy-confirmation",
+                                transactionId(pending))
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "confirmedShares": 250.00000000,
+                                  "confirmedDate": "2026-07-21"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("BUY_STATE_CONFLICT")));
+        mockMvc.perform(get("/api/v1/positions")
                         .header("Authorization", bearer(token)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(
-                        "$.data.status",
-                        is("ESTIMATED")));
+                        "$.data[0].shares",
+                        is(100.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].remainingCost",
+                        is(400.0)));
     }
 
     @Test

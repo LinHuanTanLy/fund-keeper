@@ -45,6 +45,13 @@ interface SpringDataFundTransactionRepository
             TransactionType type,
             Collection<TransactionStatus> statuses);
 
+    boolean existsByUserIdAndAccountIdAndFundIdAndIdGreaterThanAndStatusIn(
+            long userId,
+            long accountId,
+            long fundId,
+            long transactionId,
+            Collection<TransactionStatus> statuses);
+
     @Query("""
             SELECT
                 COALESCE(SUM(CASE

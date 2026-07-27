@@ -70,6 +70,7 @@ public record FundTransaction(
             BigDecimal feeAmount,
             BigDecimal netAmount,
             BigDecimal shares,
+            FundPosition positionBefore,
             LocalDate submittedDate,
             SubmittedPeriod submittedPeriod,
             LocalDate effectiveTradeDate,
@@ -82,6 +83,11 @@ public record FundTransaction(
             PendingReason pendingReason,
             String note,
             Instant now) {
+        PositionSnapshot snapshot =
+                status == TransactionStatus.ESTIMATED
+                                || status == TransactionStatus.CONFIRMED
+                        ? positionSnapshot(positionBefore)
+                        : PositionSnapshot.empty();
         return new FundTransaction(
                 null,
                 UUID.randomUUID().toString(),
@@ -101,10 +107,10 @@ public record FundTransaction(
                 null,
                 null,
                 shares,
-                null,
-                null,
-                null,
-                null,
+                snapshot.shares(),
+                snapshot.cost(),
+                snapshot.status(),
+                snapshot.holdingStartDate(),
                 submittedDate,
                 submittedPeriod,
                 effectiveTradeDate,
@@ -344,7 +350,15 @@ public record FundTransaction(
     public FundTransaction confirmBuy(
             BigDecimal finalShares,
             LocalDate finalConfirmedDate,
+            FundPosition positionBefore,
             Instant now) {
+        PositionSnapshot snapshot = hasPositionSnapshot()
+                ? new PositionSnapshot(
+                        positionSharesBefore,
+                        positionCostBefore,
+                        positionStatusBefore,
+                        positionHoldingStartDateBefore)
+                : positionSnapshot(positionBefore);
         return new FundTransaction(
                 id,
                 publicId,
@@ -364,10 +378,10 @@ public record FundTransaction(
                 removedCost,
                 realizedProfit,
                 finalShares,
-                positionSharesBefore,
-                positionCostBefore,
-                positionStatusBefore,
-                positionHoldingStartDateBefore,
+                snapshot.shares(),
+                snapshot.cost(),
+                snapshot.status(),
+                snapshot.holdingStartDate(),
                 submittedDate,
                 submittedPeriod,
                 effectiveTradeDate,
@@ -431,5 +445,42 @@ public record FundTransaction(
     public boolean appliesToPosition() {
         return status == TransactionStatus.ESTIMATED
                 || status == TransactionStatus.CONFIRMED;
+    }
+
+    public boolean positionWasEmptyBefore() {
+        return hasPositionSnapshot()
+                && positionSharesBefore.signum() == 0
+                && positionCostBefore.signum() == 0;
+    }
+
+    private static PositionSnapshot positionSnapshot(
+            FundPosition position) {
+        if (position == null) {
+            return new PositionSnapshot(
+                    BigDecimal.ZERO,
+                    BigDecimal.ZERO,
+                    PositionStatus.CONFIRMED,
+                    null);
+        }
+        return new PositionSnapshot(
+                position.shares(),
+                position.remainingCost(),
+                position.status(),
+                position.holdingStartDate());
+    }
+
+    private record PositionSnapshot(
+            BigDecimal shares,
+            BigDecimal cost,
+            PositionStatus status,
+            LocalDate holdingStartDate) {
+
+        private static PositionSnapshot empty() {
+            return new PositionSnapshot(
+                    null,
+                    null,
+                    null,
+                    null);
+        }
     }
 }

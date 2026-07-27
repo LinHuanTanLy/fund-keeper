@@ -57,6 +57,12 @@ public interface PortfolioRepository {
             long userId,
             long accountId);
 
+    boolean existsPositionAffectingTransactionAfter(
+            long userId,
+            long accountId,
+            long fundId,
+            long transactionId);
+
     List<FundPosition> findPositionsByUserId(long userId);
 
     List<FundPosition> findPositionsByUserIdAndAccountId(

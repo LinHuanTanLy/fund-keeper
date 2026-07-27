@@ -105,11 +105,9 @@ public record FundPosition(
                 .setScale(SHARE_SCALE, RoundingMode.HALF_UP);
         BigDecimal newCost = remainingCost.add(grossAmount)
                 .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
-        PositionStatus newStatus =
-                status == PositionStatus.CONFIRMED
-                                && transactionStatus == TransactionStatus.CONFIRMED
-                        ? PositionStatus.CONFIRMED
-                        : PositionStatus.ESTIMATED;
+        PositionStatus newStatus = combinedStatus(
+                status,
+                transactionStatus);
         return new FundPosition(
                 id,
                 publicId,
@@ -233,6 +231,19 @@ public record FundPosition(
     private static PositionStatus positionStatus(
             TransactionStatus transactionStatus) {
         return transactionStatus == TransactionStatus.CONFIRMED
+                ? PositionStatus.CONFIRMED
+                : PositionStatus.ESTIMATED;
+    }
+
+    private static PositionStatus combinedStatus(
+            PositionStatus currentStatus,
+            TransactionStatus transactionStatus) {
+        if (currentStatus == PositionStatus.NEEDS_CALIBRATION) {
+            return PositionStatus.NEEDS_CALIBRATION;
+        }
+        return currentStatus == PositionStatus.CONFIRMED
+                        && transactionStatus
+                                == TransactionStatus.CONFIRMED
                 ? PositionStatus.CONFIRMED
                 : PositionStatus.ESTIMATED;
     }

@@ -217,6 +217,14 @@ class FundTransactionJpaEntity {
         this.removedCost = transaction.removedCost();
         this.realizedProfit = transaction.realizedProfit();
         this.shares = transaction.shares();
+        this.positionSharesBefore =
+                transaction.positionSharesBefore();
+        this.positionCostBefore =
+                transaction.positionCostBefore();
+        this.positionStatusBefore =
+                transaction.positionStatusBefore();
+        this.positionHoldingStartDateBefore =
+                transaction.positionHoldingStartDateBefore();
         this.confirmedDate = transaction.confirmedDate();
         this.pendingReason = transaction.pendingReason();
         this.cancellationReason =

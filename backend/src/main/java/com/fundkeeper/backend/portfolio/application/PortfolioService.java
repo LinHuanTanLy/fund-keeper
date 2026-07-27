@@ -103,6 +103,19 @@ public class PortfolioService {
                 user.id(),
                 account.id(),
                 plan.effectiveDate());
+        FundPosition positionBefore =
+                plan.status() == TransactionStatus.ESTIMATED
+                                || plan.status()
+                                        == TransactionStatus.CONFIRMED
+                        ? portfolioRepository
+                                .findPositionByAccountIdAndFundId(
+                                        account.id(),
+                                        plan.fund().id())
+                                .filter(position ->
+                                        position.userId()
+                                                == user.id())
+                                .orElse(null)
+                        : null;
         Instant now = clock.instant();
         FundTransaction transaction = portfolioRepository.saveTransaction(
                 FundTransaction.createBuy(
@@ -116,6 +129,7 @@ public class PortfolioService {
                         plan.feeAmount(),
                         plan.netAmount(),
                         plan.shares(),
+                        positionBefore,
                         command.submittedDate(),
                         command.submittedPeriod(),
                         plan.effectiveDate(),
@@ -134,6 +148,7 @@ public class PortfolioService {
                     user.id(),
                     account.id(),
                     plan.fund().id(),
+                    positionBefore,
                     transaction,
                     plan.holdingStartDate(),
                     now);
@@ -289,11 +304,12 @@ public class PortfolioService {
             long userId,
             long accountId,
             long fundId,
+            FundPosition positionBefore,
             FundTransaction transaction,
             LocalDate holdingStartDate,
             java.time.Instant now) {
-        FundPosition position = portfolioRepository
-                .findPositionByAccountIdAndFundId(accountId, fundId)
+        FundPosition position = java.util.Optional
+                .ofNullable(positionBefore)
                 .map(existing -> existing.applyBuy(
                         transaction.shares(),
                         transaction.grossAmount(),
