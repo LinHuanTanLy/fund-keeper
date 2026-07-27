@@ -222,9 +222,23 @@ public class PortfolioService {
             String accountPublicId,
             String fundCode) {
         User user = activeUser(userPublicId);
+        List<Long> accountIds;
+        if (accountPublicId == null || accountPublicId.isBlank()) {
+            accountIds = accountRepository
+                    .findAllByUserId(user.id(), true)
+                    .stream()
+                    .map(FundAccount::id)
+                    .toList();
+        } else {
+            accountIds = List.of(
+                    scopedAccount(
+                            user.id(),
+                            accountPublicId.trim())
+                            .id());
+        }
         return portfolioRepository.summarizeSells(
                 user.id(),
-                optionalAccountId(user.id(), accountPublicId),
+                accountIds,
                 optionalFundId(fundCode));
     }
 

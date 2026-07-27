@@ -67,14 +67,13 @@ interface SpringDataFundTransactionRepository
             FROM FundTransactionJpaEntity t
             WHERE t.userId = :userId
               AND t.type = :sellType
-              AND (:accountId IS NULL
-                   OR t.accountId = :accountId)
+              AND t.accountId IN (:accountIds)
               AND (:fundId IS NULL
                    OR t.fundId = :fundId)
             """)
     SellSummaryProjection summarizeSells(
             @Param("userId") long userId,
-            @Param("accountId") Long accountId,
+            @Param("accountIds") Collection<Long> accountIds,
             @Param("fundId") Long fundId,
             @Param("sellType") TransactionType sellType,
             @Param("confirmedStatus") TransactionStatus confirmedStatus,

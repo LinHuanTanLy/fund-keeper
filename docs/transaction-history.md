@@ -66,3 +66,6 @@ Authorization: Bearer <accessToken>
 
 汇总由数据库执行条件聚合，应用层不加载全部交易后再计算，避免数据量增长后占用
 过多内存。
+
+首页如何组合当前持有收益与已实现收益，见
+[首页资产与收益总览](portfolio-overview.md)。

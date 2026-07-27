@@ -1,0 +1,55 @@
+# 首页资产与收益总览
+
+## 1. API
+
+```http
+GET /api/v1/portfolio/overview
+Authorization: Bearer <accessToken>
+```
+
+可通过 `accountId` 只汇总一个有效账户。默认汇总当前用户的全部有效账户；
+归档账户的历史交易仍能在交易记录中查询，但不进入首页。
+
+## 2. 核心口径
+
+```text
+当前持有收益 = 当前市值 - 当前剩余成本
+累计收益 = 当前持有收益 + 已确认卖出收益
+累计收益率 = 累计收益 ÷ returnCostBasis × 100%
+今日预估收益 = 当前份额 × (盘中预估净值 - 上一官方净值)
+```
+
+`returnCostBasis` 由已纳入估值的当前持仓成本与已确认卖出的移除成本组成。
+它是成本基础收益率，不是年化收益率、内部收益率或时间加权收益率。
+
+只有 `SELL + CONFIRMED` 进入 `realizedProfit`。待确认、预估、撤销和冲正
+记录不得冒充真实已实现收益。
+
+## 3. 缺价与部分汇总
+
+响应同时返回：
+
+- `positionCount`：当前持仓数；
+- `valuedPositionCount`：成功取得盘中估值或正式净值的持仓数；
+- `missingValuationCount`：未取得任何可用价格的持仓数；
+- `valuationComplete`：是否所有持仓都已纳入金额汇总；
+- `containsEstimatedData`：是否包含预估持仓、盘中估值或未结卖出。
+
+部分基金缺价时，`currentMarketValue`、`currentHoldingProfit` 和
+`cumulativeProfit` 是可估值部分的结果，并明确返回
+`valuationComplete=false`。全部基金缺价时，这些字段返回 `null`，
+不能使用 `0` 假装没有收益或亏损；已确认的 `realizedProfit` 仍单独返回。
+
+无持仓时市值和持有收益为 `0`，这是确定的空集合结果，不属于缺价。
+
+## 4. 估值状态
+
+- 盘中 `LIVE` 或 `DELAYED` 估值用于当前市值和今日预估收益；
+- `STALE`、`MARKET_CLOSED` 或 `UNAVAILABLE` 时回退最近正式净值；
+- `todayEstimatedProfit` 只在至少一只基金存在有效盘中估值时返回；
+- `todayEstimateComplete` 表示全部持仓都进入今日预估收益；
+- `dataDate` 和 `observedAt` 使用汇总中最早的数据时间，避免把部分较新
+  数据的时间冒充整个组合的更新时间。
+
+连续持有天数从当前持仓中最早的 `holdingStartDate` 起按自然日计算，
+买入当天计为第 1 天；加仓和部分卖出不重置，全部清仓后不再返回持有天数。

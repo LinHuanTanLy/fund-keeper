@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.fundkeeper.backend.portfolio.application.PortfolioService;
+import com.fundkeeper.backend.portfolio.application.PortfolioOverviewService;
 import com.fundkeeper.backend.portfolio.application.PositionValuationService;
 import com.fundkeeper.backend.portfolio.application.SellTransactionService;
 import com.fundkeeper.backend.shared.api.ApiResponse;
@@ -26,14 +27,17 @@ import com.fundkeeper.backend.shared.api.ApiResponse;
 public class PortfolioController {
 
     private final PortfolioService portfolioService;
+    private final PortfolioOverviewService portfolioOverviewService;
     private final SellTransactionService sellTransactionService;
     private final PositionValuationService positionValuationService;
 
     public PortfolioController(
             PortfolioService portfolioService,
+            PortfolioOverviewService portfolioOverviewService,
             SellTransactionService sellTransactionService,
             PositionValuationService positionValuationService) {
         this.portfolioService = portfolioService;
+        this.portfolioOverviewService = portfolioOverviewService;
         this.sellTransactionService = sellTransactionService;
         this.positionValuationService = positionValuationService;
     }
@@ -156,6 +160,16 @@ public class PortfolioController {
                 .map(PositionView::from)
                 .toList();
         return ApiResponse.success(positions);
+    }
+
+    @GetMapping("/portfolio/overview")
+    ApiResponse<PortfolioOverviewView> overview(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) String accountId) {
+        return ApiResponse.success(PortfolioOverviewView.from(
+                portfolioOverviewService.get(
+                        jwt.getSubject(),
+                        accountId)));
     }
 
     @GetMapping("/positions/valuations")

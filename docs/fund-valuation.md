@@ -61,3 +61,6 @@ FUND_VALUATION_FUND_CODES=005827
 公开可访问不等于获得商业授权。公开部署前必须改接有授权、限流说明和 SLA
 的数据供应商；业务层只依赖 `IntradayValuationProvider`，替换供应商时无需
 修改持仓计算。
+
+首页聚合金额、今日预估收益和缺价处理见
+[首页资产与收益总览](portfolio-overview.md)。

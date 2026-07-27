@@ -3,6 +3,7 @@ package com.fundkeeper.backend.portfolio.infrastructure.persistence;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -116,11 +117,19 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
     @Override
     public SellTransactionSummary summarizeSells(
             long userId,
-            Long accountId,
+            Collection<Long> accountIds,
             Long fundId) {
+        if (accountIds.isEmpty()) {
+            return new SellTransactionSummary(
+                    0,
+                    money(BigDecimal.ZERO),
+                    money(BigDecimal.ZERO),
+                    money(BigDecimal.ZERO),
+                    0);
+        }
         SellSummaryProjection result = transactionRepository.summarizeSells(
                 userId,
-                accountId,
+                accountIds,
                 fundId,
                 TransactionType.SELL,
                 TransactionStatus.CONFIRMED,

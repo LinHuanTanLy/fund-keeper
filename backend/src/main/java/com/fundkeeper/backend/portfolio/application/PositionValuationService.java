@@ -57,6 +57,8 @@ public class PositionValuationService {
                     ValuationPriceType.ESTIMATED,
                     valuation.estimatedNav(),
                     valuation.estimatedChangePercent(),
+                    valuation.baseNavDate(),
+                    valuation.baseNav(),
                     valuation.valuationDate(),
                     valuation.fetchedAt(),
                     valuation.dataSource());
@@ -72,6 +74,8 @@ public class PositionValuationService {
                     ValuationPriceType.OFFICIAL,
                     nav.unitNav(),
                     null,
+                    null,
+                    null,
                     nav.navDate(),
                     null,
                     nav.dataSource());
@@ -79,6 +83,9 @@ public class PositionValuationService {
         return new PositionValuationDetails(
                 details,
                 quote.status(),
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -96,6 +103,8 @@ public class PositionValuationService {
             ValuationPriceType priceType,
             BigDecimal unitNav,
             BigDecimal estimatedChangePercent,
+            java.time.LocalDate baseNavDate,
+            BigDecimal baseNav,
             java.time.LocalDate dataDate,
             java.time.Instant observedAt,
             String dataSource) {
@@ -106,6 +115,12 @@ public class PositionValuationService {
         BigDecimal profit = marketValue
                 .subtract(details.position().remainingCost())
                 .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+        BigDecimal todayEstimatedProfit = baseNav == null
+                ? null
+                : details.position()
+                        .shares()
+                        .multiply(unitNav.subtract(baseNav))
+                        .setScale(MONEY_SCALE, RoundingMode.HALF_UP);
         BigDecimal returnPercent =
                 details.position().remainingCost().signum() == 0
                         ? null
@@ -124,8 +139,11 @@ public class PositionValuationService {
                 priceType,
                 unitNav,
                 estimatedChangePercent,
+                baseNavDate,
+                baseNav,
                 marketValue,
                 profit,
+                todayEstimatedProfit,
                 returnPercent,
                 dataDate,
                 observedAt,
