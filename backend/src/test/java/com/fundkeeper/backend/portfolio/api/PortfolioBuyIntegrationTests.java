@@ -356,6 +356,71 @@ class PortfolioBuyIntegrationTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(0)));
 
+        mockMvc.perform(get("/api/v1/portfolio/funds")
+                        .header("Authorization", bearer(tokenA)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath(
+                        "$.data[0].fundCode",
+                        is("000003")))
+                .andExpect(jsonPath(
+                        "$.data[0].hasCurrentPosition",
+                        is(false)))
+                .andExpect(jsonPath(
+                        "$.data[0].accountCount",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data[0].totalShares")
+                        .doesNotExist())
+                .andExpect(jsonPath(
+                        "$.data[0].pendingBuyAmount",
+                        is(1000.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].openTransactionCount",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data[0].holdingCost")
+                        .doesNotExist())
+                .andExpect(jsonPath(
+                        "$.data[0].currentMarketValue")
+                        .doesNotExist())
+                .andExpect(jsonPath(
+                        "$.data[0].currentHoldingProfit")
+                        .doesNotExist())
+                .andExpect(jsonPath(
+                        "$.data[0].containsEstimatedData",
+                        is(false)))
+                .andExpect(jsonPath(
+                        "$.data[0].valuationComplete",
+                        is(false)));
+
+        mockMvc.perform(get("/api/v1/portfolio/funds/000003")
+                        .header("Authorization", bearer(tokenA)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.summary.hasCurrentPosition",
+                        is(false)))
+                .andExpect(jsonPath(
+                        "$.data.accounts",
+                        hasSize(0)))
+                .andExpect(jsonPath(
+                        "$.data.openTransactions",
+                        hasSize(1)))
+                .andExpect(jsonPath(
+                        "$.data.openTransactions[0].id",
+                        is(transactionId)))
+                .andExpect(jsonPath(
+                        "$.data.openTransactions[0].type",
+                        is("BUY")))
+                .andExpect(jsonPath(
+                        "$.data.transactions.totalElements",
+                        is(1)));
+
+        mockMvc.perform(get("/api/v1/portfolio/funds")
+                        .header("Authorization", bearer(tokenB)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(0)));
+
         mockMvc.perform(post("/api/v1/accounts/{id}/archive", accountA)
                         .header("Authorization", bearer(tokenA)))
                 .andExpect(status().isConflict())
@@ -392,6 +457,91 @@ class PortfolioBuyIntegrationTests {
                         .header("Authorization", bearer(tokenA)))
                 .andExpect(status().isUnprocessableContent())
                 .andExpect(jsonPath("$.code", is("FUND_NOT_SUPPORTED")));
+    }
+
+    @Test
+    void pendingBuyInAnotherAccountJoinsExistingFundCard()
+            throws Exception {
+        String token = registerAndLogin(USER_A);
+        String currentAccount = firstAccountId(token);
+        String pendingAccount = createAccount(token, "待确认账户");
+
+        mockMvc.perform(post("/api/v1/transactions/buys")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyBody(
+                                "buy-card-confirmed-001",
+                                currentAccount,
+                                "000001",
+                                "1015.00",
+                                "2026-07-20",
+                                "BEFORE_15",
+                                "500.00000000",
+                                "2026-07-21")))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status", is("CONFIRMED")));
+        jdbcTemplate.update(
+                "DELETE FROM fund_purchase_fee_rules WHERE fund_id = ?",
+                fundId("000001"));
+        mockMvc.perform(post("/api/v1/transactions/buys")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(buyBody(
+                                "buy-card-pending-001",
+                                pendingAccount,
+                                "000001",
+                                "500.00",
+                                "2026-07-20",
+                                "BEFORE_15",
+                                null,
+                                null)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status", is("PENDING")))
+                .andExpect(jsonPath(
+                        "$.data.pendingReason",
+                        is("FEE_RULE_UNAVAILABLE")));
+
+        mockMvc.perform(get("/api/v1/portfolio/funds")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath(
+                        "$.data[0].hasCurrentPosition",
+                        is(true)))
+                .andExpect(jsonPath(
+                        "$.data[0].accountCount",
+                        is(2)))
+                .andExpect(jsonPath(
+                        "$.data[0].totalShares",
+                        is(500.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].pendingBuyAmount",
+                        is(500.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].openTransactionCount",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data[0].holdingCost",
+                        is(1015.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].currentMarketValue",
+                        is(1000.0)));
+
+        mockMvc.perform(get("/api/v1/portfolio/funds/000001")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.accounts",
+                        hasSize(1)))
+                .andExpect(jsonPath(
+                        "$.data.accounts[0].accountId",
+                        is(currentAccount)))
+                .andExpect(jsonPath(
+                        "$.data.openTransactions",
+                        hasSize(1)))
+                .andExpect(jsonPath(
+                        "$.data.openTransactions[0].accountId",
+                        is(pendingAccount)));
     }
 
     @Test

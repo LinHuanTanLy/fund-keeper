@@ -25,6 +25,7 @@ import com.fundkeeper.backend.auth.domain.User;
 import com.fundkeeper.backend.auth.domain.UserRepository;
 import com.fundkeeper.backend.auth.domain.UserStatus;
 import com.fundkeeper.backend.fund.domain.FundCategory;
+import com.fundkeeper.backend.fund.domain.FundDataRepository;
 import com.fundkeeper.backend.fund.domain.FundDefinition;
 import com.fundkeeper.backend.fund.valuation.domain.ValuationStatus;
 import com.fundkeeper.backend.portfolio.domain.FundPosition;
@@ -42,6 +43,7 @@ class PortfolioOverviewServiceTests {
 
     private UserRepository userRepository;
     private FundAccountRepository accountRepository;
+    private FundDataRepository fundDataRepository;
     private PortfolioRepository portfolioRepository;
     private PositionValuationService valuationService;
     private PortfolioOverviewService service;
@@ -52,11 +54,13 @@ class PortfolioOverviewServiceTests {
     void setUp() {
         userRepository = mock(UserRepository.class);
         accountRepository = mock(FundAccountRepository.class);
+        fundDataRepository = mock(FundDataRepository.class);
         portfolioRepository = mock(PortfolioRepository.class);
         valuationService = mock(PositionValuationService.class);
         service = new PortfolioOverviewService(
                 userRepository,
                 accountRepository,
+                fundDataRepository,
                 portfolioRepository,
                 valuationService,
                 CLOCK);
@@ -249,6 +253,15 @@ class PortfolioOverviewServiceTests {
                 .thenReturn(Map.of(
                         1000L,
                         summary("390", "400", "-10", 0)));
+        when(portfolioRepository.findOpenTransactions(
+                        1L,
+                        Set.of(10L, 11L)))
+                .thenReturn(List.of());
+        when(fundDataRepository.findFundsByIds(
+                        Set.of(1000L, 1001L)))
+                .thenReturn(List.of(
+                        first.positionDetails().fund(),
+                        missing.positionDetails().fund()));
 
         List<FundPortfolioCardDetails> cards =
                 service.listFunds("user-1", null);

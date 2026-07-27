@@ -219,10 +219,24 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
                         userId,
                         accountIds,
                         fundId,
-                        List.of(
-                                TransactionStatus.PENDING,
-                                TransactionStatus.ESTIMATED,
-                                TransactionStatus.NEEDS_CALIBRATION))
+                        openTransactionStatuses())
+                .stream()
+                .map(FundTransactionJpaEntity::toDomain)
+                .toList();
+    }
+
+    @Override
+    public List<FundTransaction> findOpenTransactions(
+            long userId,
+            Collection<Long> accountIds) {
+        if (accountIds.isEmpty()) {
+            return List.of();
+        }
+        return transactionRepository
+                .findAllByUserIdAndAccountIdInAndStatusInOrderByCreatedAtDescIdDesc(
+                        userId,
+                        accountIds,
+                        openTransactionStatuses())
                 .stream()
                 .map(FundTransactionJpaEntity::toDomain)
                 .toList();
@@ -340,5 +354,12 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
     private BigDecimal money(BigDecimal value) {
         return (value == null ? BigDecimal.ZERO : value)
                 .setScale(4, RoundingMode.HALF_UP);
+    }
+
+    private List<TransactionStatus> openTransactionStatuses() {
+        return List.of(
+                TransactionStatus.PENDING,
+                TransactionStatus.ESTIMATED,
+                TransactionStatus.NEEDS_CALIBRATION);
     }
 }

@@ -159,4 +159,10 @@ interface SpringDataFundTransactionRepository
                     Collection<Long> accountIds,
                     long fundId,
                     Collection<TransactionStatus> statuses);
+
+    List<FundTransactionJpaEntity>
+            findAllByUserIdAndAccountIdInAndStatusInOrderByCreatedAtDescIdDesc(
+                    long userId,
+                    Collection<Long> accountIds,
+                    Collection<TransactionStatus> statuses);
 }

@@ -66,13 +66,28 @@ Authorization: Bearer <accessToken>
 持仓合并为一张卡片，响应包含：
 
 - 基金代码、名称和参与聚合的账户数；
+- 是否已经形成当前持仓、未完成交易数和待确认买入金额；
 - 总份额、当前持仓成本和当前市值；
 - 当前持有收益与收益率；
 - 该基金的已实现收益和累计收益；
 - 今日盘中预估收益、连续持有天数和估值状态。
 
 底层持仓和交易流水不会因展示聚合而合并。点击卡片后仍可按账户查看明细。
-已全部清仓的基金不出现在当前基金卡片列表，其历史收益保留在首页总览和交易记录。
+已全部清仓且没有未完成交易的基金不出现在当前基金卡片列表，其历史收益保留在
+首页总览和交易记录。
+
+只有 `PENDING`、`ESTIMATED` 或 `NEEDS_CALIBRATION` 买入、尚未形成任何
+持仓时，基金仍以待处理卡片展示：
+
+- `hasCurrentPosition=false`；
+- `pendingBuyAmount` 展示这些未完成买入的已提交金额；
+- `openTransactionCount` 展示该基金全部未完成交易数；
+- `totalShares`、`holdingCost`、`currentMarketValue`、
+  `currentHoldingProfit`、收益率和今日收益均为 `null`。
+
+待确认买入与已有持仓分布在不同账户时仍合并成同一张卡片。`accountCount`
+包含持仓账户和未完成交易账户；份额、成本和收益仍只计算真实存在的持仓，
+不能把待确认金额当成当前资产。
 
 列表按可用当前市值从高到低排序，市值相同时按基金代码升序；完全缺价的基金
 排在最后。卖出收益由数据库一次按 `fundId` 分组聚合，不能为每张卡片单独查询。
@@ -99,4 +114,6 @@ Authorization: Bearer <accessToken>
 
 历史分页仍使用 `createdAt DESC, id DESC` 的稳定顺序，`page` 从 0 开始，
 `size` 范围为 1～100。当前用户没有该基金持仓时返回
-`POSITION_NOT_FOUND`，不会暴露其他用户是否持有该基金。
+`POSITION_NOT_FOUND`；如果存在未完成交易则仍可打开详情。纯待确认买入的
+详情中 `accounts` 为空，账户与待处理原因由 `openTransactions` 提供。
+这些规则不会暴露其他用户是否持有该基金。

@@ -11,8 +11,11 @@ import com.fundkeeper.backend.portfolio.application.ValuationPriceType;
 public record FundPortfolioCardView(
         String fundCode,
         String fundName,
+        boolean hasCurrentPosition,
         int accountCount,
         BigDecimal totalShares,
+        BigDecimal pendingBuyAmount,
+        long openTransactionCount,
         BigDecimal holdingCost,
         BigDecimal currentMarketValue,
         BigDecimal currentHoldingProfit,
@@ -37,8 +40,11 @@ public record FundPortfolioCardView(
         return new FundPortfolioCardView(
                 details.fund().code(),
                 details.fund().name(),
+                details.hasCurrentPosition(),
                 details.accountCount(),
                 details.totalShares(),
+                details.pendingBuyAmount(),
+                details.openTransactionCount(),
                 metrics.totalHoldingCost(),
                 metrics.currentMarketValue(),
                 metrics.currentHoldingProfit(),

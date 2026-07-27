@@ -7,9 +7,11 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -19,11 +21,14 @@ import com.fundkeeper.backend.account.domain.FundAccount;
 import com.fundkeeper.backend.account.domain.FundAccountRepository;
 import com.fundkeeper.backend.auth.domain.User;
 import com.fundkeeper.backend.auth.domain.UserRepository;
+import com.fundkeeper.backend.fund.domain.FundDataRepository;
 import com.fundkeeper.backend.fund.domain.FundDefinition;
 import com.fundkeeper.backend.fund.valuation.domain.ValuationStatus;
+import com.fundkeeper.backend.portfolio.domain.FundTransaction;
 import com.fundkeeper.backend.portfolio.domain.PortfolioRepository;
 import com.fundkeeper.backend.portfolio.domain.PositionStatus;
 import com.fundkeeper.backend.portfolio.domain.SellTransactionSummary;
+import com.fundkeeper.backend.portfolio.domain.TransactionType;
 import com.fundkeeper.backend.shared.exception.BusinessException;
 import com.fundkeeper.backend.shared.exception.ErrorCode;
 
@@ -35,6 +40,7 @@ public class PortfolioOverviewService {
 
     private final UserRepository userRepository;
     private final FundAccountRepository accountRepository;
+    private final FundDataRepository fundDataRepository;
     private final PortfolioRepository portfolioRepository;
     private final PositionValuationService positionValuationService;
     private final Clock clock;
@@ -42,11 +48,13 @@ public class PortfolioOverviewService {
     public PortfolioOverviewService(
             UserRepository userRepository,
             FundAccountRepository accountRepository,
+            FundDataRepository fundDataRepository,
             PortfolioRepository portfolioRepository,
             PositionValuationService positionValuationService,
             Clock clock) {
         this.userRepository = userRepository;
         this.accountRepository = accountRepository;
+        this.fundDataRepository = fundDataRepository;
         this.portfolioRepository = portfolioRepository;
         this.positionValuationService = positionValuationService;
         this.clock = clock;
@@ -78,7 +86,7 @@ public class PortfolioOverviewService {
                 portfolioRepository.summarizeSellsByFund(
                         scope.user().id(),
                         scope.accountIds());
-        Map<Long, List<PositionValuationDetails>> byFund =
+        Map<Long, List<PositionValuationDetails>> positionsByFund =
                 scope.positions()
                         .stream()
                         .collect(Collectors.groupingBy(
@@ -88,12 +96,35 @@ public class PortfolioOverviewService {
                                         .id(),
                                 LinkedHashMap::new,
                                 Collectors.toList()));
-        return byFund.entrySet()
+        Map<Long, List<FundTransaction>> openTransactionsByFund =
+                portfolioRepository.findOpenTransactions(
+                                scope.user().id(),
+                                scope.accountIds())
+                        .stream()
+                        .collect(Collectors.groupingBy(
+                                FundTransaction::fundId,
+                                LinkedHashMap::new,
+                                Collectors.toList()));
+        Set<Long> fundIds = new LinkedHashSet<>(
+                positionsByFund.keySet());
+        fundIds.addAll(openTransactionsByFund.keySet());
+        Map<Long, FundDefinition> funds = fundDataRepository
+                .findFundsByIds(fundIds)
                 .stream()
-                .map(entry -> fundCard(
-                        entry.getValue(),
+                .collect(Collectors.toMap(
+                        FundDefinition::id,
+                        Function.identity()));
+        return fundIds.stream()
+                .map(fundId -> fundCard(
+                        requiredFund(funds, fundId),
+                        positionsByFund.getOrDefault(
+                                fundId,
+                                List.of()),
+                        openTransactionsByFund.getOrDefault(
+                                fundId,
+                                List.of()),
                         sellSummaries.getOrDefault(
-                                entry.getKey(),
+                                fundId,
                                 emptySellSummary())))
                 .sorted(cardOrder())
                 .toList();
@@ -104,37 +135,40 @@ public class PortfolioOverviewService {
             String userPublicId,
             String fundCode) {
         PortfolioScope scope = scope(userPublicId, null);
-        String normalizedFundCode = fundCode == null
-                ? ""
-                : fundCode.trim();
+        FundDefinition fund = fundDataRepository
+                .findFundByCode(fundCode == null ? "" : fundCode.trim())
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.FUND_NOT_FOUND,
+                        "基金不存在"));
         List<PositionValuationDetails> positions =
                 scope.positions()
                         .stream()
                         .filter(details -> details
                                 .positionDetails()
                                 .fund()
-                                .code()
-                                .equals(normalizedFundCode))
+                                .id()
+                                .equals(fund.id()))
                         .toList();
-        if (positions.isEmpty()) {
+        List<FundTransaction> openTransactions =
+                portfolioRepository.findOpenTransactions(
+                        scope.user().id(),
+                        scope.accountIds(),
+                        fund.id());
+        if (positions.isEmpty() && openTransactions.isEmpty()) {
             throw new BusinessException(
                     ErrorCode.POSITION_NOT_FOUND,
                     "当前没有该基金持仓");
         }
-        long fundId = positions.getFirst()
-                .positionDetails()
-                .fund()
-                .id();
         SellTransactionSummary totalSellSummary =
                 portfolioRepository.summarizeSells(
                         scope.user().id(),
                         scope.accountIds(),
-                        fundId);
+                        fund.id());
         Map<Long, SellTransactionSummary> sellSummariesByAccount =
                 portfolioRepository.summarizeSellsByAccount(
                         scope.user().id(),
                         scope.accountIds(),
-                        fundId);
+                        fund.id());
         List<FundPortfolioAccountDetails> accounts =
                 positions.stream()
                         .sorted(Comparator
@@ -157,7 +191,11 @@ public class PortfolioOverviewService {
                                                 emptySellSummary()))))
                         .toList();
         return new FundPortfolioHoldingDetails(
-                fundCard(positions, totalSellSummary),
+                fundCard(
+                        fund,
+                        positions,
+                        openTransactions,
+                        totalSellSummary),
                 accounts);
     }
 
@@ -268,30 +306,84 @@ public class PortfolioOverviewService {
     }
 
     private FundPortfolioCardDetails fundCard(
+            FundDefinition fund,
             List<PositionValuationDetails> positions,
+            List<FundTransaction> openTransactions,
             SellTransactionSummary sellSummary) {
-        FundDefinition fund = positions.getFirst()
-                .positionDetails()
-                .fund();
-        int accountCount = (int) positions.stream()
+        Set<Long> accountIds = positions.stream()
                 .map(details -> details
                         .positionDetails()
                         .account()
                         .id())
-                .distinct()
-                .count();
-        BigDecimal totalShares = positions.stream()
-                .map(details -> details
-                        .positionDetails()
-                        .position()
-                        .shares())
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(8, RoundingMode.HALF_UP);
+                .collect(Collectors.toSet());
+        openTransactions.stream()
+                .map(FundTransaction::accountId)
+                .forEach(accountIds::add);
+        boolean hasCurrentPosition = !positions.isEmpty();
+        BigDecimal totalShares = hasCurrentPosition
+                ? positions.stream()
+                        .map(details -> details
+                                .positionDetails()
+                                .position()
+                                .shares())
+                        .reduce(BigDecimal.ZERO, BigDecimal::add)
+                        .setScale(8, RoundingMode.HALF_UP)
+                : null;
+        BigDecimal pendingBuyAmount = money(openTransactions.stream()
+                .filter(transaction ->
+                        transaction.type() == TransactionType.BUY)
+                .map(FundTransaction::grossAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
         return new FundPortfolioCardDetails(
                 fund,
-                accountCount,
+                hasCurrentPosition,
+                accountIds.size(),
                 totalShares,
-                calculate(positions, sellSummary));
+                pendingBuyAmount,
+                openTransactions.size(),
+                hasCurrentPosition
+                        ? calculate(positions, sellSummary)
+                        : pendingOnlyMetrics(sellSummary));
+    }
+
+    private PortfolioOverviewDetails pendingOnlyMetrics(
+            SellTransactionSummary sellSummary) {
+        return new PortfolioOverviewDetails(
+                0,
+                0,
+                0,
+                null,
+                money(BigDecimal.ZERO),
+                null,
+                null,
+                null,
+                sellSummary.totalRealizedProfit(),
+                null,
+                null,
+                null,
+                null,
+                false,
+                sellSummary.confirmedSellCount(),
+                sellSummary.openSellCount(),
+                false,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    private FundDefinition requiredFund(
+            Map<Long, FundDefinition> funds,
+            long fundId) {
+        FundDefinition fund = funds.get(fundId);
+        if (fund == null) {
+            throw new IllegalStateException(
+                    "Portfolio fund no longer exists");
+        }
+        return fund;
     }
 
     private Comparator<FundPortfolioCardDetails> cardOrder() {

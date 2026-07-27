@@ -40,6 +40,10 @@ public interface PortfolioRepository {
             Collection<Long> accountIds,
             long fundId);
 
+    List<FundTransaction> findOpenTransactions(
+            long userId,
+            Collection<Long> accountIds);
+
     Optional<FundPosition> findPositionByAccountIdAndFundId(
             long accountId,
             long fundId);
