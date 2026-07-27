@@ -17,6 +17,13 @@ public interface PortfolioRepository {
             String publicId,
             long userId);
 
+    TransactionPage findTransactions(TransactionQuery query);
+
+    SellTransactionSummary summarizeSells(
+            long userId,
+            Long accountId,
+            Long fundId);
+
     Optional<FundPosition> findPositionByAccountIdAndFundId(
             long accountId,
             long fundId);

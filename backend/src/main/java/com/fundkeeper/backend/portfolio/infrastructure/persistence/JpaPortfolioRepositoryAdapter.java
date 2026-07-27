@@ -1,14 +1,24 @@
 package com.fundkeeper.backend.portfolio.infrastructure.persistence;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import jakarta.persistence.criteria.Predicate;
+
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Repository;
 
 import com.fundkeeper.backend.portfolio.domain.FundPosition;
 import com.fundkeeper.backend.portfolio.domain.FundTransaction;
 import com.fundkeeper.backend.portfolio.domain.PortfolioRepository;
+import com.fundkeeper.backend.portfolio.domain.SellTransactionSummary;
 import com.fundkeeper.backend.portfolio.domain.TransactionStatus;
+import com.fundkeeper.backend.portfolio.domain.TransactionPage;
+import com.fundkeeper.backend.portfolio.domain.TransactionQuery;
 import com.fundkeeper.backend.portfolio.domain.TransactionType;
 
 @Repository
@@ -48,6 +58,81 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
         return transactionRepository
                 .findForUpdateByPublicIdAndUserId(publicId, userId)
                 .map(FundTransactionJpaEntity::toDomain);
+    }
+
+    @Override
+    public TransactionPage findTransactions(TransactionQuery query) {
+        var specification =
+                (org.springframework.data.jpa.domain.Specification<
+                        FundTransactionJpaEntity>)
+                (root, criteriaQuery, builder) -> {
+                    List<Predicate> predicates = new ArrayList<>();
+                    predicates.add(builder.equal(
+                            root.get("userId"),
+                            query.userId()));
+                    if (query.accountId() != null) {
+                        predicates.add(builder.equal(
+                                root.get("accountId"),
+                                query.accountId()));
+                    }
+                    if (query.fundId() != null) {
+                        predicates.add(builder.equal(
+                                root.get("fundId"),
+                                query.fundId()));
+                    }
+                    if (query.type() != null) {
+                        predicates.add(builder.equal(
+                                root.get("type"),
+                                query.type()));
+                    }
+                    if (query.status() != null) {
+                        predicates.add(builder.equal(
+                                root.get("status"),
+                                query.status()));
+                    }
+                    return builder.and(
+                            predicates.toArray(Predicate[]::new));
+                };
+        var pageRequest = PageRequest.of(
+                query.page(),
+                query.size(),
+                Sort.by(
+                        Sort.Order.desc("createdAt"),
+                        Sort.Order.desc("id")));
+        var result = transactionRepository.findAll(
+                specification,
+                pageRequest);
+        return new TransactionPage(
+                result.getContent()
+                        .stream()
+                        .map(FundTransactionJpaEntity::toDomain)
+                        .toList(),
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements(),
+                result.getTotalPages());
+    }
+
+    @Override
+    public SellTransactionSummary summarizeSells(
+            long userId,
+            Long accountId,
+            Long fundId) {
+        SellSummaryProjection result = transactionRepository.summarizeSells(
+                userId,
+                accountId,
+                fundId,
+                TransactionType.SELL,
+                TransactionStatus.CONFIRMED,
+                List.of(
+                        TransactionStatus.PENDING,
+                        TransactionStatus.ESTIMATED));
+        return new SellTransactionSummary(
+                result.getConfirmedSellCount(),
+                money(result.getTotalActualReceivedAmount()),
+                money(result.getTotalRemovedCost()),
+                money(result.getTotalRealizedProfit()),
+                result.getOpenSellCount());
     }
 
     @Override
@@ -157,5 +242,10 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
         }
         positionRepository.deleteById(position.id());
         positionRepository.flush();
+    }
+
+    private BigDecimal money(BigDecimal value) {
+        return (value == null ? BigDecimal.ZERO : value)
+                .setScale(4, RoundingMode.HALF_UP);
     }
 }

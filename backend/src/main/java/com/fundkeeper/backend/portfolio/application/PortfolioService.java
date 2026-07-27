@@ -3,7 +3,12 @@ package com.fundkeeper.backend.portfolio.application;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,7 +22,10 @@ import com.fundkeeper.backend.fund.domain.FundDefinition;
 import com.fundkeeper.backend.portfolio.domain.FundPosition;
 import com.fundkeeper.backend.portfolio.domain.FundTransaction;
 import com.fundkeeper.backend.portfolio.domain.PortfolioRepository;
+import com.fundkeeper.backend.portfolio.domain.SellTransactionSummary;
 import com.fundkeeper.backend.portfolio.domain.SnapshotBoundaryRepository;
+import com.fundkeeper.backend.portfolio.domain.TransactionQuery;
+import com.fundkeeper.backend.portfolio.domain.TransactionStatus;
 import com.fundkeeper.backend.portfolio.domain.TransactionType;
 import com.fundkeeper.backend.shared.exception.BusinessException;
 import com.fundkeeper.backend.shared.exception.ErrorCode;
@@ -168,6 +176,59 @@ public class PortfolioService {
     }
 
     @Transactional(readOnly = true)
+    public TransactionPageDetails listTransactions(
+            String userPublicId,
+            String accountPublicId,
+            String fundCode,
+            String rawType,
+            String rawStatus,
+            int page,
+            int size) {
+        User user = activeUser(userPublicId);
+        validatePage(page, size);
+        Long accountId = optionalAccountId(
+                user.id(),
+                accountPublicId);
+        Long fundId = optionalFundId(fundCode);
+        TransactionType type = optionalEnum(
+                rawType,
+                TransactionType.class,
+                "type");
+        TransactionStatus status = optionalEnum(
+                rawStatus,
+                TransactionStatus.class,
+                "status");
+
+        var result = portfolioRepository.findTransactions(
+                new TransactionQuery(
+                        user.id(),
+                        accountId,
+                        fundId,
+                        type,
+                        status,
+                        page,
+                        size));
+        return new TransactionPageDetails(
+                transactionDetails(user.id(), result.items()),
+                result.page(),
+                result.size(),
+                result.totalElements(),
+                result.totalPages());
+    }
+
+    @Transactional(readOnly = true)
+    public SellTransactionSummary summarizeSells(
+            String userPublicId,
+            String accountPublicId,
+            String fundCode) {
+        User user = activeUser(userPublicId);
+        return portfolioRepository.summarizeSells(
+                user.id(),
+                optionalAccountId(user.id(), accountPublicId),
+                optionalFundId(fundCode));
+    }
+
+    @Transactional(readOnly = true)
     public List<PositionDetails> listPositions(
             String userPublicId,
             String accountPublicId) {
@@ -276,6 +337,86 @@ public class PortfolioService {
                 .orElseThrow(() -> new BusinessException(
                         ErrorCode.ACCOUNT_NOT_FOUND,
                         "账户不存在"));
+    }
+
+    private Long optionalAccountId(
+            long userId,
+            String accountPublicId) {
+        if (accountPublicId == null || accountPublicId.isBlank()) {
+            return null;
+        }
+        return scopedAccount(userId, accountPublicId.trim()).id();
+    }
+
+    private Long optionalFundId(String fundCode) {
+        if (fundCode == null || fundCode.isBlank()) {
+            return null;
+        }
+        return fundDataRepository
+                .findFundByCode(fundCode.trim())
+                .orElseThrow(() -> new BusinessException(
+                        ErrorCode.FUND_NOT_FOUND,
+                        "基金不存在"))
+                .id();
+    }
+
+    private void validatePage(int page, int size) {
+        if (page < 0 || size < 1 || size > 100) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_REQUEST,
+                    "page 必须大于等于 0，size 必须在 1 到 100 之间");
+        }
+    }
+
+    private <E extends Enum<E>> E optionalEnum(
+            String rawValue,
+            Class<E> enumType,
+            String parameterName) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return null;
+        }
+        try {
+            return Enum.valueOf(
+                    enumType,
+                    rawValue.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_REQUEST,
+                    parameterName + " 不是支持的值");
+        }
+    }
+
+    private List<TransactionDetails> transactionDetails(
+            long userId,
+            List<FundTransaction> transactions) {
+        Map<Long, FundAccount> accounts = accountRepository
+                .findAllByUserId(userId, true)
+                .stream()
+                .collect(Collectors.toMap(
+                        FundAccount::id,
+                        Function.identity()));
+        Map<Long, FundDefinition> funds = new HashMap<>();
+        return transactions.stream()
+                .map(transaction -> {
+                    FundAccount account = accounts.get(
+                            transaction.accountId());
+                    if (account == null) {
+                        throw new IllegalStateException(
+                                "Transaction account no longer exists");
+                    }
+                    FundDefinition fund = funds.computeIfAbsent(
+                            transaction.fundId(),
+                            fundId -> fundDataRepository
+                                    .findFundById(fundId)
+                                    .orElseThrow(() ->
+                                            new IllegalStateException(
+                                                    "Transaction fund no longer exists")));
+                    return new TransactionDetails(
+                            transaction,
+                            account,
+                            fund);
+                })
+                .toList();
     }
 
     private TransactionDetails details(

@@ -248,6 +248,184 @@ class PortfolioSellIntegrationTests {
     }
 
     @Test
+    void transactionHistoryFiltersAndSummarizesConfirmedSellsOnly()
+            throws Exception {
+        Session session = preparedPosition();
+        MvcResult confirmed = sell(
+                session.token(),
+                sellBody(
+                        "sell-history-confirmed-001",
+                        session.accountId(),
+                        "PARTIAL",
+                        "420.00",
+                        "390.00",
+                        "200.00000000",
+                        "2026-07-24"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String confirmedId = JsonPath.read(
+                confirmed.getResponse().getContentAsString(),
+                "$.data.id");
+        MvcResult estimated = sell(
+                session.token(),
+                sellBody(
+                        "sell-history-estimated-001",
+                        session.accountId(),
+                        "PARTIAL",
+                        "100.00",
+                        null,
+                        null,
+                        null))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String estimatedId = JsonPath.read(
+                estimated.getResponse().getContentAsString(),
+                "$.data.id");
+
+        String otherToken = registerAndLogin(
+                "sell-other@example.com",
+                "Other-Sell-Password-2026");
+        String otherAccountId = firstAccountId(otherToken);
+        mockMvc.perform(post("/api/v1/transactions/buys")
+                        .header(
+                                "Authorization",
+                                bearer(otherToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "requestId": "other-user-buy-001",
+                                  "accountId": "%s",
+                                  "fundCode": "000001",
+                                  "amount": 200.00,
+                                  "submittedDate": "2026-07-24",
+                                  "submittedPeriod": "BEFORE_15",
+                                  "confirmedShares": 100.00000000,
+                                  "confirmedDate": "2026-07-24"
+                                }
+                                """.formatted(otherAccountId)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/transactions")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .param("page", "0")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.totalElements",
+                        is(3)))
+                .andExpect(jsonPath(
+                        "$.data.totalPages",
+                        is(2)))
+                .andExpect(jsonPath(
+                        "$.data.items",
+                        hasSize(2)))
+                .andExpect(jsonPath(
+                        "$.data.items[0].id",
+                        is(estimatedId)))
+                .andExpect(jsonPath(
+                        "$.data.items[1].id",
+                        is(confirmedId)));
+
+        mockMvc.perform(get("/api/v1/transactions")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .param("accountId", session.accountId())
+                        .param("fundCode", "000001")
+                        .param("type", "sell")
+                        .param("status", "confirmed"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.totalElements",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data.items[0].id",
+                        is(confirmedId)));
+
+        mockMvc.perform(get("/api/v1/transactions/summary")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .param("accountId", session.accountId())
+                        .param("fundCode", "000001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.confirmedSellCount",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data.totalActualReceivedAmount",
+                        is(390.0)))
+                .andExpect(jsonPath(
+                        "$.data.totalRemovedCost",
+                        is(400.0)))
+                .andExpect(jsonPath(
+                        "$.data.totalRealizedProfit",
+                        is(-10.0)))
+                .andExpect(jsonPath(
+                        "$.data.openSellCount",
+                        is(1)));
+
+        mockMvc.perform(get("/api/v1/transactions")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .param("accountId", otherAccountId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("ACCOUNT_NOT_FOUND")));
+        mockMvc.perform(get("/api/v1/transactions")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .param("type", "withdrawal"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("INVALID_REQUEST")));
+        mockMvc.perform(get("/api/v1/transactions")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .param("page", "-1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("INVALID_REQUEST")));
+
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{transactionId}/cancel",
+                                estimatedId)
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "reason": "查询汇总测试撤销"
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/transactions/summary")
+                        .header(
+                                "Authorization",
+                                bearer(session.token())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.confirmedSellCount",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data.totalRealizedProfit",
+                        is(-10.0)))
+                .andExpect(jsonPath(
+                        "$.data.openSellCount",
+                        is(0)));
+    }
+
+    @Test
     void pendingFullSellKeepsPositionAndBlocksAnotherSell()
             throws Exception {
         Session session = preparedPosition();
@@ -972,6 +1150,12 @@ class PortfolioSellIntegrationTests {
     }
 
     private String registerAndLogin() throws Exception {
+        return registerAndLogin(EMAIL, PASSWORD);
+    }
+
+    private String registerAndLogin(
+            String email,
+            String password) throws Exception {
         mockMvc.perform(post("/api/v1/auth/email-codes")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -979,10 +1163,10 @@ class PortfolioSellIntegrationTests {
                                   "email": "%s",
                                   "purpose": "REGISTER"
                                 }
-                                """.formatted(EMAIL)))
+                                """.formatted(email)))
                 .andExpect(status().isAccepted());
         String code = emailSender
-                .latestCode(EMAIL, EmailCodePurpose.REGISTER)
+                .latestCode(email, EmailCodePurpose.REGISTER)
                 .orElseThrow();
         mockMvc.perform(post("/api/v1/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -993,8 +1177,8 @@ class PortfolioSellIntegrationTests {
                                   "code": "%s"
                                 }
                                 """.formatted(
-                                EMAIL,
-                                PASSWORD,
+                                email,
+                                password,
                                 code)))
                 .andExpect(status().isCreated());
         MvcResult login = mockMvc.perform(post("/api/v1/auth/login")
@@ -1005,8 +1189,8 @@ class PortfolioSellIntegrationTests {
                                   "password": "%s"
                                 }
                                 """.formatted(
-                                EMAIL,
-                                PASSWORD)))
+                                email,
+                                password)))
                 .andExpect(status().isOk())
                 .andReturn();
         return JsonPath.read(

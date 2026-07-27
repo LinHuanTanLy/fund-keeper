@@ -104,6 +104,38 @@ public class PortfolioController {
                         requestId)));
     }
 
+    @GetMapping("/transactions")
+    ApiResponse<TransactionPageView> transactions(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) String accountId,
+            @RequestParam(required = false) String fundCode,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.success(TransactionPageView.from(
+                portfolioService.listTransactions(
+                        jwt.getSubject(),
+                        accountId,
+                        fundCode,
+                        type,
+                        status,
+                        page,
+                        size)));
+    }
+
+    @GetMapping("/transactions/summary")
+    ApiResponse<SellTransactionSummaryView> transactionSummary(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) String accountId,
+            @RequestParam(required = false) String fundCode) {
+        return ApiResponse.success(SellTransactionSummaryView.from(
+                portfolioService.summarizeSells(
+                        jwt.getSubject(),
+                        accountId,
+                        fundCode)));
+    }
+
     @GetMapping("/transactions/{transactionId}")
     ApiResponse<TransactionView> get(
             @AuthenticationPrincipal Jwt jwt,
