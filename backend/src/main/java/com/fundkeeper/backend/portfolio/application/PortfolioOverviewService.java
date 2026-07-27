@@ -99,6 +99,68 @@ public class PortfolioOverviewService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public FundPortfolioHoldingDetails getFund(
+            String userPublicId,
+            String fundCode) {
+        PortfolioScope scope = scope(userPublicId, null);
+        String normalizedFundCode = fundCode == null
+                ? ""
+                : fundCode.trim();
+        List<PositionValuationDetails> positions =
+                scope.positions()
+                        .stream()
+                        .filter(details -> details
+                                .positionDetails()
+                                .fund()
+                                .code()
+                                .equals(normalizedFundCode))
+                        .toList();
+        if (positions.isEmpty()) {
+            throw new BusinessException(
+                    ErrorCode.POSITION_NOT_FOUND,
+                    "当前没有该基金持仓");
+        }
+        long fundId = positions.getFirst()
+                .positionDetails()
+                .fund()
+                .id();
+        SellTransactionSummary totalSellSummary =
+                portfolioRepository.summarizeSells(
+                        scope.user().id(),
+                        scope.accountIds(),
+                        fundId);
+        Map<Long, SellTransactionSummary> sellSummariesByAccount =
+                portfolioRepository.summarizeSellsByAccount(
+                        scope.user().id(),
+                        scope.accountIds(),
+                        fundId);
+        List<FundPortfolioAccountDetails> accounts =
+                positions.stream()
+                        .sorted(Comparator
+                                .comparing((PositionValuationDetails details) ->
+                                        details.positionDetails()
+                                                .account()
+                                                .createdAt())
+                                .thenComparing(details -> details
+                                        .positionDetails()
+                                        .account()
+                                        .publicId()))
+                        .map(details -> new FundPortfolioAccountDetails(
+                                details,
+                                calculate(
+                                        List.of(details),
+                                        sellSummariesByAccount.getOrDefault(
+                                                details.positionDetails()
+                                                        .account()
+                                                        .id(),
+                                                emptySellSummary()))))
+                        .toList();
+        return new FundPortfolioHoldingDetails(
+                fundCard(positions, totalSellSummary),
+                accounts);
+    }
+
     private PortfolioScope scope(
             String userPublicId,
             String accountPublicId) {

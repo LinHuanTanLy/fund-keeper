@@ -643,6 +643,193 @@ class PortfolioSellIntegrationTests {
     }
 
     @Test
+    void fundDetailCombinesAccountBreakdownOpenActivityAndHistory()
+            throws Exception {
+        Session session = preparedPosition();
+        sell(
+                session.token(),
+                sellBody(
+                        "sell-detail-confirmed-001",
+                        session.accountId(),
+                        "PARTIAL",
+                        "420.00",
+                        "390.00",
+                        "200.00000000",
+                        "2026-07-24"))
+                .andExpect(status().isCreated());
+        MvcResult createdAccount = mockMvc.perform(
+                        post("/api/v1/accounts")
+                                .header(
+                                        "Authorization",
+                                        bearer(session.token()))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "name": "银行卡",
+                                          "platform": "BANK"
+                                        }
+                                        """))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String secondAccountId = JsonPath.read(
+                createdAccount.getResponse().getContentAsString(),
+                "$.data.id");
+        mockMvc.perform(post("/api/v1/transactions/buys")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "requestId": "buy-detail-second-001",
+                                  "accountId": "%s",
+                                  "fundCode": "000001",
+                                  "amount": 200.00,
+                                  "submittedDate": "2026-07-24",
+                                  "submittedPeriod": "BEFORE_15",
+                                  "confirmedShares": 100.00000000,
+                                  "confirmedDate": "2026-07-24"
+                                }
+                                """.formatted(secondAccountId)))
+                .andExpect(status().isCreated());
+        sell(
+                session.token(),
+                sellBody(
+                        "sell-detail-pending-001",
+                        secondAccountId,
+                        "FULL",
+                        null,
+                        null,
+                        null,
+                        null))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status", is("PENDING")));
+
+        mockMvc.perform(get("/api/v1/portfolio/funds/000001")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .param("page", "0")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.summary.accountCount",
+                        is(2)))
+                .andExpect(jsonPath(
+                        "$.data.summary.totalShares",
+                        is(400.0)))
+                .andExpect(jsonPath(
+                        "$.data.summary.holdingCost",
+                        is(800.0)))
+                .andExpect(jsonPath(
+                        "$.data.summary.realizedProfit",
+                        is(-10.0)))
+                .andExpect(jsonPath(
+                        "$.data.summary.openSellCount",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data.accounts",
+                        hasSize(2)))
+                .andExpect(jsonPath(
+                        "$.data.accounts[0].accountId",
+                        is(session.accountId())))
+                .andExpect(jsonPath(
+                        "$.data.accounts[0].shares",
+                        is(300.0)))
+                .andExpect(jsonPath(
+                        "$.data.accounts[0].realizedProfit",
+                        is(-10.0)))
+                .andExpect(jsonPath(
+                        "$.data.accounts[0].openSellCount",
+                        is(0)))
+                .andExpect(jsonPath(
+                        "$.data.accounts[1].accountId",
+                        is(secondAccountId)))
+                .andExpect(jsonPath(
+                        "$.data.accounts[1].accountPlatform",
+                        is("BANK")))
+                .andExpect(jsonPath(
+                        "$.data.accounts[1].shares",
+                        is(100.0)))
+                .andExpect(jsonPath(
+                        "$.data.accounts[1].openSellCount",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data.openTransactions",
+                        hasSize(1)))
+                .andExpect(jsonPath(
+                        "$.data.openTransactions[0].accountId",
+                        is(secondAccountId)))
+                .andExpect(jsonPath(
+                        "$.data.openTransactions[0].status",
+                        is("PENDING")))
+                .andExpect(jsonPath(
+                        "$.data.transactions.items",
+                        hasSize(2)))
+                .andExpect(jsonPath(
+                        "$.data.transactions.totalElements",
+                        is(4)))
+                .andExpect(jsonPath(
+                        "$.data.transactions.totalPages",
+                        is(2)));
+
+        String otherToken = registerAndLogin(
+                "detail-other@example.com",
+                "Other-Detail-Password-2026");
+        mockMvc.perform(get("/api/v1/portfolio/funds/000001")
+                        .header(
+                                "Authorization",
+                                bearer(otherToken)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("POSITION_NOT_FOUND")));
+    }
+
+    @Test
+    void closedFundHasNoCurrentDetailButKeepsTransactionHistory()
+            throws Exception {
+        Session session = preparedPosition();
+        sell(
+                session.token(),
+                sellBody(
+                        "sell-detail-closed-001",
+                        session.accountId(),
+                        "FULL",
+                        "1000.00",
+                        "1000.00",
+                        "500.00000000",
+                        "2026-07-24"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status", is("CONFIRMED")));
+
+        mockMvc.perform(get("/api/v1/portfolio/funds/000001")
+                        .header(
+                                "Authorization",
+                                bearer(session.token())))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("POSITION_NOT_FOUND")));
+
+        mockMvc.perform(get("/api/v1/transactions")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .param("fundCode", "000001"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.totalElements",
+                        is(2)))
+                .andExpect(jsonPath(
+                        "$.data.items[0].type",
+                        is("SELL")))
+                .andExpect(jsonPath(
+                        "$.data.items[1].type",
+                        is("BUY")));
+    }
+
+    @Test
     void pendingFullSellKeepsPositionAndBlocksAnotherSell()
             throws Exception {
         Session session = preparedPosition();

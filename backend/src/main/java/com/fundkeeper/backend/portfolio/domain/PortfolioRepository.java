@@ -30,6 +30,16 @@ public interface PortfolioRepository {
             long userId,
             Collection<Long> accountIds);
 
+    Map<Long, SellTransactionSummary> summarizeSellsByAccount(
+            long userId,
+            Collection<Long> accountIds,
+            long fundId);
+
+    List<FundTransaction> findOpenTransactions(
+            long userId,
+            Collection<Long> accountIds,
+            long fundId);
+
     Optional<FundPosition> findPositionByAccountIdAndFundId(
             long accountId,
             long fundId);

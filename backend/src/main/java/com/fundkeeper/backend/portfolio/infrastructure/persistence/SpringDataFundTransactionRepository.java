@@ -115,4 +115,48 @@ interface SpringDataFundTransactionRepository
             @Param("confirmedStatus") TransactionStatus confirmedStatus,
             @Param("openStatuses")
             Collection<TransactionStatus> openStatuses);
+
+    @Query("""
+            SELECT
+                t.accountId AS accountId,
+                COALESCE(SUM(CASE
+                    WHEN t.status = :confirmedStatus
+                    THEN 1 ELSE 0 END), 0) AS confirmedSellCount,
+                COALESCE(SUM(CASE
+                    WHEN t.status = :confirmedStatus
+                    THEN t.actualReceivedAmount ELSE 0 END), 0)
+                    AS totalActualReceivedAmount,
+                COALESCE(SUM(CASE
+                    WHEN t.status = :confirmedStatus
+                    THEN t.removedCost ELSE 0 END), 0)
+                    AS totalRemovedCost,
+                COALESCE(SUM(CASE
+                    WHEN t.status = :confirmedStatus
+                    THEN t.realizedProfit ELSE 0 END), 0)
+                    AS totalRealizedProfit,
+                COALESCE(SUM(CASE
+                    WHEN t.status IN (:openStatuses)
+                    THEN 1 ELSE 0 END), 0) AS openSellCount
+            FROM FundTransactionJpaEntity t
+            WHERE t.userId = :userId
+              AND t.type = :sellType
+              AND t.accountId IN (:accountIds)
+              AND t.fundId = :fundId
+            GROUP BY t.accountId
+            """)
+    List<AccountSellSummaryProjection> summarizeSellsByAccount(
+            @Param("userId") long userId,
+            @Param("accountIds") Collection<Long> accountIds,
+            @Param("fundId") long fundId,
+            @Param("sellType") TransactionType sellType,
+            @Param("confirmedStatus") TransactionStatus confirmedStatus,
+            @Param("openStatuses")
+            Collection<TransactionStatus> openStatuses);
+
+    List<FundTransactionJpaEntity>
+            findAllByUserIdAndAccountIdInAndFundIdAndStatusInOrderByCreatedAtDescIdDesc(
+                    long userId,
+                    Collection<Long> accountIds,
+                    long fundId,
+                    Collection<TransactionStatus> statuses);
 }

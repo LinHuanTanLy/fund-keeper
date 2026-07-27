@@ -176,6 +176,59 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
     }
 
     @Override
+    public Map<Long, SellTransactionSummary> summarizeSellsByAccount(
+            long userId,
+            Collection<Long> accountIds,
+            long fundId) {
+        if (accountIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, SellTransactionSummary> summaries =
+                new LinkedHashMap<>();
+        transactionRepository.summarizeSellsByAccount(
+                        userId,
+                        accountIds,
+                        fundId,
+                        TransactionType.SELL,
+                        TransactionStatus.CONFIRMED,
+                        List.of(
+                                TransactionStatus.PENDING,
+                                TransactionStatus.ESTIMATED))
+                .forEach(result -> summaries.put(
+                        result.getAccountId(),
+                        new SellTransactionSummary(
+                                result.getConfirmedSellCount(),
+                                money(result
+                                        .getTotalActualReceivedAmount()),
+                                money(result.getTotalRemovedCost()),
+                                money(result.getTotalRealizedProfit()),
+                                result.getOpenSellCount())));
+        return Map.copyOf(summaries);
+    }
+
+    @Override
+    public List<FundTransaction> findOpenTransactions(
+            long userId,
+            Collection<Long> accountIds,
+            long fundId) {
+        if (accountIds.isEmpty()) {
+            return List.of();
+        }
+        return transactionRepository
+                .findAllByUserIdAndAccountIdInAndFundIdAndStatusInOrderByCreatedAtDescIdDesc(
+                        userId,
+                        accountIds,
+                        fundId,
+                        List.of(
+                                TransactionStatus.PENDING,
+                                TransactionStatus.ESTIMATED,
+                                TransactionStatus.NEEDS_CALIBRATION))
+                .stream()
+                .map(FundTransactionJpaEntity::toDomain)
+                .toList();
+    }
+
+    @Override
     public Optional<FundPosition> findPositionByAccountIdAndFundId(
             long accountId,
             long fundId) {

@@ -76,3 +76,27 @@ Authorization: Bearer <accessToken>
 
 列表按可用当前市值从高到低排序，市值相同时按基金代码升序；完全缺价的基金
 排在最后。卖出收益由数据库一次按 `fundId` 分组聚合，不能为每张卡片单独查询。
+
+## 6. 基金详情
+
+```http
+GET /api/v1/portfolio/funds/000001?page=0&size=20
+Authorization: Bearer <accessToken>
+```
+
+该接口面向首页当前持仓卡片，一次返回四部分：
+
+- `summary`：该基金在全部有效账户中的汇总，口径与首页卡片一致；
+- `accounts`：按账户拆分的份额、成本、市值、持有收益、已实现收益、
+  今日预估收益和估值状态；
+- `openTransactions`：有效账户中该基金的 `PENDING`、`ESTIMATED` 或
+  `NEEDS_CALIBRATION` 未完成记录，不受历史分页影响；
+- `transactions`：该基金的完整历史交易分页，包含归档账户留下的历史记录。
+
+`accounts` 中的已实现收益由数据库一次按 `accountId` 分组统计，不能逐账户
+循环查询。顶部和账户明细只统计有效账户，因此其收益数字不会混入已归档账户；
+历史分页保留归档账户记录是为了满足审计和追溯需要。
+
+历史分页仍使用 `createdAt DESC, id DESC` 的稳定顺序，`page` 从 0 开始，
+`size` 范围为 1～100。当前用户没有该基金持仓时返回
+`POSITION_NOT_FOUND`，不会暴露其他用户是否持有该基金。

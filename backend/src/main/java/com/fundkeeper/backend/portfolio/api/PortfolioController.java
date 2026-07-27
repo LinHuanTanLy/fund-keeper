@@ -16,8 +16,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.fundkeeper.backend.portfolio.application.PortfolioService;
+import com.fundkeeper.backend.portfolio.application.FundPortfolioDetailService;
 import com.fundkeeper.backend.portfolio.application.PortfolioOverviewService;
+import com.fundkeeper.backend.portfolio.application.PortfolioService;
 import com.fundkeeper.backend.portfolio.application.PositionValuationService;
 import com.fundkeeper.backend.portfolio.application.SellTransactionService;
 import com.fundkeeper.backend.shared.api.ApiResponse;
@@ -27,16 +28,19 @@ import com.fundkeeper.backend.shared.api.ApiResponse;
 public class PortfolioController {
 
     private final PortfolioService portfolioService;
+    private final FundPortfolioDetailService fundPortfolioDetailService;
     private final PortfolioOverviewService portfolioOverviewService;
     private final SellTransactionService sellTransactionService;
     private final PositionValuationService positionValuationService;
 
     public PortfolioController(
             PortfolioService portfolioService,
+            FundPortfolioDetailService fundPortfolioDetailService,
             PortfolioOverviewService portfolioOverviewService,
             SellTransactionService sellTransactionService,
             PositionValuationService positionValuationService) {
         this.portfolioService = portfolioService;
+        this.fundPortfolioDetailService = fundPortfolioDetailService;
         this.portfolioOverviewService = portfolioOverviewService;
         this.sellTransactionService = sellTransactionService;
         this.positionValuationService = positionValuationService;
@@ -181,6 +185,20 @@ public class PortfolioController {
                 .stream()
                 .map(FundPortfolioCardView::from)
                 .toList());
+    }
+
+    @GetMapping("/portfolio/funds/{fundCode}")
+    ApiResponse<FundPortfolioDetailView> fundDetail(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable String fundCode,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return ApiResponse.success(FundPortfolioDetailView.from(
+                fundPortfolioDetailService.get(
+                        jwt.getSubject(),
+                        fundCode,
+                        page,
+                        size)));
     }
 
     @GetMapping("/positions/valuations")

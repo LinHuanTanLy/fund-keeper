@@ -242,6 +242,30 @@ public class PortfolioService {
     }
 
     @Transactional(readOnly = true)
+    public List<TransactionDetails> listOpenTransactions(
+            String userPublicId,
+            String fundCode) {
+        User user = activeUser(userPublicId);
+        Long fundId = optionalFundId(fundCode);
+        if (fundId == null) {
+            throw new BusinessException(
+                    ErrorCode.INVALID_REQUEST,
+                    "fundCode 不能为空");
+        }
+        List<Long> accountIds = accountRepository
+                .findAllByUserId(user.id(), false)
+                .stream()
+                .map(FundAccount::id)
+                .toList();
+        return transactionDetails(
+                user.id(),
+                portfolioRepository.findOpenTransactions(
+                        user.id(),
+                        accountIds,
+                        fundId));
+    }
+
+    @Transactional(readOnly = true)
     public List<PositionDetails> listPositions(
             String userPublicId,
             String accountPublicId) {
