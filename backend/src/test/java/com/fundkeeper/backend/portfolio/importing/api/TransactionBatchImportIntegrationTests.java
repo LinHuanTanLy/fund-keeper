@@ -2,6 +2,7 @@ package com.fundkeeper.backend.portfolio.importing.api;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -171,7 +172,7 @@ class TransactionBatchImportIntegrationTests {
     }
 
     @Test
-    void sellDuplicateRowsAndUnknownFieldsAreRejected()
+    void sellWithoutPositionDuplicateRowsAndUnknownFieldsAreRejected()
             throws Exception {
         String token = registerAndLogin();
         String sell = """
@@ -200,7 +201,7 @@ class TransactionBatchImportIntegrationTests {
                         is("REJECT")))
                 .andExpect(jsonPath(
                         "$.data.rows[0].issues[0].code",
-                        is("SELL_NOT_SUPPORTED_YET")));
+                        is("POSITION_NOT_FOUND")));
 
         String duplicate = batch(
                 "transaction-batch-duplicate-001",
@@ -235,6 +236,214 @@ class TransactionBatchImportIntegrationTests {
 
         assertCount("fund_transactions", 0);
         assertCount("fund_positions", 0);
+    }
+
+    @Test
+    void mixedBuyAndConfirmedSellUseProjectedPositionInRowOrder()
+            throws Exception {
+        String token = registerAndLogin();
+        String body = batch(
+                "transaction-batch-mixed-001",
+                "我的支付宝",
+                "ALIPAY",
+                buy(
+                        "row-001",
+                        "000001",
+                        "1000.00",
+                        "500.00000000",
+                        "2026-07-24")
+                        + ","
+                        + sell(
+                                "row-002",
+                                "000001",
+                                "PARTIAL",
+                                "400.00",
+                                "390.00",
+                                "200.00000000",
+                                "2026-07-24")
+                        + ","
+                        + buy(
+                                "row-003",
+                                "000002",
+                                "800.00",
+                                "200.00000000",
+                                "2026-07-24")
+                        + ","
+                        + sell(
+                                "row-004",
+                                "000002",
+                                "FULL",
+                                null,
+                                "900.00",
+                                null,
+                                "2026-07-24"));
+
+        preflight(token, body)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("READY_TO_COMMIT")))
+                .andExpect(jsonPath(
+                        "$.data.rows",
+                        hasSize(4)))
+                .andExpect(jsonPath(
+                        "$.data.rows[1].sellMode",
+                        is("PARTIAL")))
+                .andExpect(jsonPath(
+                        "$.data.rows[1].transactionStatus",
+                        is("CONFIRMED")))
+                .andExpect(jsonPath(
+                        "$.data.rows[1].calculatedShares",
+                        is(200.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[1].removedCost",
+                        is(400.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[1].realizedProfit",
+                        is(-10.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[3].sellMode",
+                        is("FULL")))
+                .andExpect(jsonPath(
+                        "$.data.rows[3].transactionStatus",
+                        is("CONFIRMED")))
+                .andExpect(jsonPath(
+                        "$.data.rows[3].removedCost",
+                        is(800.0)))
+                .andExpect(jsonPath(
+                        "$.data.rows[3].realizedProfit",
+                        is(100.0)));
+
+        assertCount("fund_transactions", 0);
+        assertCount("fund_positions", 0);
+
+        commit(token, "transaction-batch-mixed-001")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath(
+                        "$.data.importedCount",
+                        is(4)))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].transactionStatus",
+                        is("CONFIRMED")))
+                .andExpect(jsonPath(
+                        "$.data.rows[3].transactionStatus",
+                        is("CONFIRMED")));
+
+        org.assertj.core.api.Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT shares FROM fund_positions",
+                                BigDecimal.class))
+                .isEqualByComparingTo("300.00000000");
+        org.assertj.core.api.Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT remaining_cost FROM fund_positions",
+                                BigDecimal.class))
+                .isEqualByComparingTo("600.0000");
+        assertCount("fund_transactions", 4);
+
+        commit(token, "transaction-batch-mixed-001")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("COMMITTED")));
+        assertCount("fund_transactions", 4);
+    }
+
+    @Test
+    void estimatedSellBlocksLaterSameFundRowInBatch()
+            throws Exception {
+        String token = registerAndLogin();
+        preparePosition(
+                token,
+                "000001",
+                "prepare-open-sell-position",
+                "1000.00",
+                "500.00000000");
+        String body = batch(
+                "transaction-batch-open-sell-001",
+                "默认账户",
+                "OTHER",
+                sell(
+                        "row-001",
+                        "000001",
+                        "PARTIAL",
+                        "400.00",
+                        null,
+                        null,
+                        null)
+                        + ","
+                        + buy(
+                                "row-002",
+                                "000001",
+                                "100.00",
+                                "50.00000000",
+                                "2026-07-24"));
+
+        preflight(token, body)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("PREFLIGHT_FAILED")))
+                .andExpect(jsonPath(
+                        "$.data.rows[0].transactionStatus",
+                        is("ESTIMATED")))
+                .andExpect(jsonPath(
+                        "$.data.rows[1].action",
+                        is("REJECT")))
+                .andExpect(jsonPath(
+                        "$.data.rows[1].issues[0].code",
+                        is("OPEN_SELL_CONFLICT")));
+
+        assertCount("fund_transactions", 1);
+        org.assertj.core.api.Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT shares FROM fund_positions",
+                                BigDecimal.class))
+                .isEqualByComparingTo("500.00000000");
+    }
+
+    @Test
+    void changedPositionAfterPreflightRequiresAnotherPreflight()
+            throws Exception {
+        String token = registerAndLogin();
+        preparePosition(
+                token,
+                "000001",
+                "prepare-stale-sell-position",
+                "1000.00",
+                "500.00000000");
+        String body = batch(
+                "transaction-batch-stale-sell-001",
+                "默认账户",
+                "OTHER",
+                sell(
+                        "row-001",
+                        "000001",
+                        "PARTIAL",
+                        "400.00",
+                        "390.00",
+                        "200.00000000",
+                        "2026-07-24"));
+        preflight(token, body)
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("READY_TO_COMMIT")));
+
+        jdbcTemplate.update(
+                "UPDATE fund_positions SET status = 'ESTIMATED'");
+
+        commit(token, "transaction-batch-stale-sell-001")
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("IMPORT_NOT_READY")));
+
+        assertCount("fund_transactions", 1);
+        org.assertj.core.api.Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                "SELECT shares FROM fund_positions",
+                                BigDecimal.class))
+                .isEqualByComparingTo("500.00000000");
     }
 
     @Test
@@ -378,6 +587,119 @@ class TransactionBatchImportIntegrationTests {
     }
 
     @Test
+    void secondSellFailureRestoresFirstSellAndWholeBatchRollsBack()
+            throws Exception {
+        String token = registerAndLogin();
+        preparePosition(
+                token,
+                "000001",
+                "prepare-sell-rollback-1",
+                "1000.00",
+                "500.00000000");
+        preparePosition(
+                token,
+                "000002",
+                "prepare-sell-rollback-2",
+                "800.00",
+                "200.00000000");
+        String body = batch(
+                "transaction-batch-sell-rollback-001",
+                "默认账户",
+                "OTHER",
+                sell(
+                        "row-001",
+                        "000001",
+                        "FULL",
+                        null,
+                        "1100.00",
+                        null,
+                        "2026-07-24")
+                        + ","
+                        + sell(
+                                "row-002",
+                                "000002",
+                                "FULL",
+                                null,
+                                "900.00",
+                                null,
+                                "2026-07-24"));
+        preflight(token, body)
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("READY_TO_COMMIT")));
+
+        String publicId = jdbcTemplate.queryForObject(
+                """
+                SELECT public_id
+                  FROM portfolio_import_batches
+                 WHERE batch_id =
+                       'transaction-batch-sell-rollback-001'
+                """,
+                String.class);
+        Long userId = jdbcTemplate.queryForObject(
+                "SELECT id FROM users WHERE email_normalized = ?",
+                Long.class,
+                EMAIL);
+        Long accountId = jdbcTemplate.queryForObject(
+                """
+                SELECT id
+                  FROM fund_accounts
+                 WHERE user_id = ?
+                   AND name_normalized = '默认账户'
+                """,
+                Long.class,
+                userId);
+        jdbcTemplate.update(
+                """
+                INSERT INTO fund_transactions
+                    (public_id, user_id, account_id, fund_id,
+                     request_id, request_fingerprint, transaction_type,
+                     status, gross_amount, shares, submitted_date,
+                     submitted_period, effective_trade_date,
+                     created_at, updated_at, version)
+                VALUES (?, ?, ?, ?, ?, ?, 'BUY', 'CONFIRMED',
+                        1, 1, '2026-07-24', 'BEFORE_15',
+                        '2026-07-24',
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0)
+                """,
+                UUID.randomUUID().toString(),
+                userId,
+                accountId,
+                fundId("000002"),
+                "import:" + publicId + ":2",
+                "b".repeat(64));
+
+        commit(token, "transaction-batch-sell-rollback-001")
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("INTERNAL_ERROR")));
+
+        assertCount("fund_transactions", 3);
+        assertCount("fund_positions", 2);
+        org.assertj.core.api.Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                """
+                                SELECT shares
+                                  FROM fund_positions
+                                 WHERE fund_id = ?
+                                """,
+                                BigDecimal.class,
+                                fundId("000001")))
+                .isEqualByComparingTo("500.00000000");
+        org.assertj.core.api.Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                """
+                                SELECT status
+                                  FROM portfolio_import_batches
+                                 WHERE batch_id =
+                                       'transaction-batch-sell-rollback-001'
+                                """,
+                                String.class))
+                .isEqualTo("COMMIT_FAILED");
+    }
+
+    @Test
     void sameBatchIdWithDifferentCommittedContentIsRejected()
             throws Exception {
         String token = registerAndLogin();
@@ -471,6 +793,83 @@ class TransactionBatchImportIntegrationTests {
                 fundCode,
                 amount,
                 confirmation);
+    }
+
+    private String sell(
+            String rowId,
+            String fundCode,
+            String sellMode,
+            String expectedAmount,
+            String actualReceivedAmount,
+            String confirmedShares,
+            String confirmedDate) {
+        return """
+                {
+                  "rowId": "%s",
+                  "fundCode": "%s",
+                  "type": "SELL",
+                  "sellMode": "%s",
+                  "expectedAmount": %s,
+                  "actualReceivedAmount": %s,
+                  "submittedDate": "2026-07-24",
+                  "submittedPeriod": "BEFORE_15",
+                  "confirmedShares": %s,
+                  "confirmedDate": %s
+                }
+                """.formatted(
+                rowId,
+                fundCode,
+                sellMode,
+                nullableNumber(expectedAmount),
+                nullableNumber(actualReceivedAmount),
+                nullableNumber(confirmedShares),
+                confirmedDate == null
+                        ? "null"
+                        : "\"" + confirmedDate + "\"");
+    }
+
+    private String nullableNumber(String value) {
+        return value == null ? "null" : value;
+    }
+
+    private void preparePosition(
+            String token,
+            String fundCode,
+            String requestId,
+            String amount,
+            String shares) throws Exception {
+        String accountId = firstAccountId(token);
+        mockMvc.perform(post("/api/v1/transactions/buys")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "requestId": "%s",
+                                  "accountId": "%s",
+                                  "fundCode": "%s",
+                                  "amount": %s,
+                                  "submittedDate": "2026-07-24",
+                                  "submittedPeriod": "BEFORE_15",
+                                  "confirmedShares": %s,
+                                  "confirmedDate": "2026-07-24"
+                                }
+                                """.formatted(
+                                requestId,
+                                accountId,
+                                fundCode,
+                                amount,
+                                shares)))
+                .andExpect(status().isCreated());
+    }
+
+    private String firstAccountId(String token) throws Exception {
+        MvcResult result = mockMvc.perform(get("/api/v1/accounts")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andReturn();
+        return JsonPath.read(
+                result.getResponse().getContentAsString(),
+                "$.data[0].id");
     }
 
     private void insertFund(String code, String name) {

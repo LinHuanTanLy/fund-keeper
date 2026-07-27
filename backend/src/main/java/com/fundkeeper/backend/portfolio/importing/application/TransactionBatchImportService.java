@@ -3,9 +3,12 @@ package com.fundkeeper.backend.portfolio.importing.application;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -31,9 +34,18 @@ import com.fundkeeper.backend.portfolio.application.BuyTransactionOutcome;
 import com.fundkeeper.backend.portfolio.application.BuyTransactionPlan;
 import com.fundkeeper.backend.portfolio.application.BuyTransactionPlanner;
 import com.fundkeeper.backend.portfolio.application.PortfolioService;
+import com.fundkeeper.backend.portfolio.application.SellTransactionCommand;
+import com.fundkeeper.backend.portfolio.application.SellTransactionOutcome;
+import com.fundkeeper.backend.portfolio.application.SellTransactionPlan;
+import com.fundkeeper.backend.portfolio.application.SellTransactionPlanner;
+import com.fundkeeper.backend.portfolio.application.SellTransactionService;
+import com.fundkeeper.backend.fund.application.FundCatalogService;
+import com.fundkeeper.backend.portfolio.domain.FundPosition;
 import com.fundkeeper.backend.portfolio.domain.PortfolioRepository;
+import com.fundkeeper.backend.portfolio.domain.SellMode;
 import com.fundkeeper.backend.portfolio.domain.SnapshotBoundaryRepository;
 import com.fundkeeper.backend.portfolio.domain.SubmittedPeriod;
+import com.fundkeeper.backend.portfolio.domain.TransactionStatus;
 import com.fundkeeper.backend.portfolio.importing.application.TransactionBatchDocument.TransactionRowDocument;
 import com.fundkeeper.backend.portfolio.importing.domain.ImportBatch;
 import com.fundkeeper.backend.portfolio.importing.domain.ImportBatchRepository;
@@ -61,6 +73,9 @@ public class TransactionBatchImportService {
     private final ImportBatchRepository batchRepository;
     private final BuyTransactionPlanner buyPlanner;
     private final PortfolioService portfolioService;
+    private final FundCatalogService fundCatalogService;
+    private final SellTransactionPlanner sellPlanner;
+    private final SellTransactionService sellTransactionService;
     private final ImportFingerprint fingerprint;
     private final Clock clock;
     private final TransactionTemplate transactionTemplate;
@@ -75,6 +90,9 @@ public class TransactionBatchImportService {
             ImportBatchRepository batchRepository,
             BuyTransactionPlanner buyPlanner,
             PortfolioService portfolioService,
+            FundCatalogService fundCatalogService,
+            SellTransactionPlanner sellPlanner,
+            SellTransactionService sellTransactionService,
             ImportFingerprint fingerprint,
             Clock clock,
             PlatformTransactionManager transactionManager) {
@@ -87,6 +105,9 @@ public class TransactionBatchImportService {
         this.batchRepository = batchRepository;
         this.buyPlanner = buyPlanner;
         this.portfolioService = portfolioService;
+        this.fundCatalogService = fundCatalogService;
+        this.sellPlanner = sellPlanner;
+        this.sellTransactionService = sellTransactionService;
         this.fingerprint = fingerprint;
         this.clock = clock;
         this.transactionTemplate =
@@ -237,24 +258,61 @@ public class TransactionBatchImportService {
         List<TransactionBatchCommitResult.CommittedTransactionRow> rows =
                 new ArrayList<>();
         for (TransactionPlan value : analysis.plans()) {
-            BuyTransactionCommand previewCommand =
-                    value.plan().command();
-            BuyTransactionCommand command =
-                    new BuyTransactionCommand(
-                            requestId(batch, value.row()),
-                            account.publicId(),
-                            previewCommand.fundCode(),
-                            previewCommand.amount(),
-                            previewCommand.submittedDate(),
-                            previewCommand.submittedPeriod(),
-                            previewCommand.confirmedShares(),
-                            previewCommand.confirmedDate(),
-                            previewCommand.note());
-            BuyTransactionOutcome outcome;
+            String transactionPublicId;
+            TransactionStatus transactionStatus;
             try {
-                outcome = portfolioService.buy(
-                        user.publicId(),
-                        command);
+                if (value.buyPlan() != null) {
+                    BuyTransactionCommand previewCommand =
+                            value.buyPlan().command();
+                    BuyTransactionOutcome outcome =
+                            portfolioService.buy(
+                                    user.publicId(),
+                                    new BuyTransactionCommand(
+                                            requestId(
+                                                    batch,
+                                                    value.row()),
+                                            account.publicId(),
+                                            previewCommand.fundCode(),
+                                            previewCommand.amount(),
+                                            previewCommand.submittedDate(),
+                                            previewCommand.submittedPeriod(),
+                                            previewCommand.confirmedShares(),
+                                            previewCommand.confirmedDate(),
+                                            previewCommand.note()));
+                    transactionPublicId = outcome.details()
+                            .transaction()
+                            .publicId();
+                    transactionStatus = outcome.details()
+                            .transaction()
+                            .status();
+                } else {
+                    SellTransactionCommand previewCommand =
+                            value.sellPlan().command();
+                    SellTransactionOutcome outcome =
+                            sellTransactionService.sell(
+                                    user.publicId(),
+                                    new SellTransactionCommand(
+                                            requestId(
+                                                    batch,
+                                                    value.row()),
+                                            account.publicId(),
+                                            previewCommand.fundCode(),
+                                            previewCommand.sellMode(),
+                                            previewCommand.expectedAmount(),
+                                            previewCommand
+                                                    .actualReceivedAmount(),
+                                            previewCommand.submittedDate(),
+                                            previewCommand.submittedPeriod(),
+                                            previewCommand.confirmedShares(),
+                                            previewCommand.confirmedDate(),
+                                            previewCommand.note()));
+                    transactionPublicId = outcome.details()
+                            .transaction()
+                            .publicId();
+                    transactionStatus = outcome.details()
+                            .transaction()
+                            .status();
+                }
             } catch (BusinessException exception) {
                 throw new IllegalStateException(
                         "A preflighted transaction could not be applied",
@@ -267,12 +325,8 @@ public class TransactionBatchImportService {
                                     value.source().rowId(),
                                     value.source().fundCode(),
                                     value.source().type(),
-                                    outcome.details()
-                                            .transaction()
-                                            .publicId(),
-                                    outcome.details()
-                                            .transaction()
-                                            .status()));
+                                    transactionPublicId,
+                                    transactionStatus));
         }
 
         Instant now = clock.instant();
@@ -302,6 +356,18 @@ public class TransactionBatchImportService {
         AccountMatch account =
                 matchAccount(user.id(), document, issues);
         Set<String> seenRowIds = new HashSet<>();
+        Set<Long> batchOpenSells = new HashSet<>();
+        Map<Long, FundPosition> projectedPositions =
+                new HashMap<>();
+        if (account.existing() != null) {
+            portfolioRepository
+                    .findPositionsByUserIdAndAccountId(
+                            user.id(),
+                            account.existing().id())
+                    .forEach(position -> projectedPositions.put(
+                            position.fundId(),
+                            position));
+        }
         List<TransactionPlan> plans = new ArrayList<>();
         List<TransactionBatchRowPreview> previews =
                 new ArrayList<>();
@@ -320,15 +386,8 @@ public class TransactionBatchImportService {
                         "DUPLICATE_ROW_ID",
                         "同一批次内 rowId 不能重复"));
             }
-            if ("SELL".equals(source.type())) {
-                rowIssues.add(ImportIssue.error(
-                        row,
-                        field(index, "type"),
-                        "SELL_NOT_SUPPORTED_YET",
-                        "当前版本仅支持批量买入，卖出将在后续版本开放"));
-            }
-
-            BuyTransactionPlan plan = null;
+            BuyTransactionPlan buyPlan = null;
+            SellTransactionPlan sellPlan = null;
             if ("BUY".equals(source.type())) {
                 try {
                     BuyTransactionCommand normalized =
@@ -337,22 +396,63 @@ public class TransactionBatchImportService {
                                             row,
                                             document.batchId(),
                                             source));
-                    plan = buyPlanner.planNormalized(normalized);
-                    if (account.existing() != null
-                            && portfolioRepository.existsOpenSell(
-                                    user.id(),
-                                    account.existing().id(),
-                                    plan.fund().id())) {
-                        rowIssues.add(ImportIssue.error(
-                                row,
-                                field(index, "fundCode"),
-                                "OPEN_SELL_CONFLICT",
-                                "该基金存在待确认或待校准卖出，处理完成前不能继续买入"));
-                    }
+                    buyPlan = buyPlanner.planNormalized(normalized);
+                    validateNoOpenSell(
+                            user.id(),
+                            account.existing(),
+                            buyPlan.fund().id(),
+                            batchOpenSells,
+                            row,
+                            index,
+                            rowIssues);
                     validateSnapshotBoundary(
                             user.id(),
                             account.existing(),
-                            plan,
+                            buyPlan.effectiveDate(),
+                            row,
+                            index,
+                            rowIssues);
+                } catch (BusinessException exception) {
+                    rowIssues.add(ImportIssue.error(
+                            row,
+                            fieldFor(exception.errorCode(), index),
+                            issueCode(exception.errorCode()),
+                            exception.getMessage()));
+                }
+            }
+            if ("SELL".equals(source.type())) {
+                try {
+                    SellTransactionCommand normalized =
+                            sellPlanner.normalize(
+                                    sellCommand(
+                                            row,
+                                            document.batchId(),
+                                            source));
+                    var fund = fundCatalogService.getSupportedFund(
+                            normalized.fundCode());
+                    validateNoOpenSell(
+                            user.id(),
+                            account.existing(),
+                            fund.id(),
+                            batchOpenSells,
+                            row,
+                            index,
+                            rowIssues);
+                    FundPosition position =
+                            projectedPositions.get(fund.id());
+                    if (position == null) {
+                        throw new BusinessException(
+                                ErrorCode.POSITION_NOT_FOUND,
+                                "当前账户不存在该基金持仓");
+                    }
+                    sellPlan = sellPlanner.planNormalized(
+                            normalized,
+                            fund,
+                            position);
+                    validateSnapshotBoundary(
+                            user.id(),
+                            account.existing(),
+                            sellPlan.effectiveDate(),
                             row,
                             index,
                             rowIssues);
@@ -371,15 +471,30 @@ public class TransactionBatchImportService {
             previews.add(preview(
                     row,
                     source,
-                    plan,
+                    buyPlan,
+                    sellPlan,
                     rejected,
                     rowIssues));
             issues.addAll(rowIssues);
-            if (!rejected && plan != null) {
+            if (!rejected
+                    && (buyPlan != null || sellPlan != null)) {
+                long fundId = buyPlan != null
+                        ? buyPlan.fund().id()
+                        : sellPlan.fund().id();
                 plans.add(new TransactionPlan(
                         row,
                         source,
-                        plan));
+                        buyPlan,
+                        sellPlan,
+                        positionFingerprint(
+                                projectedPositions.get(fundId))));
+                applyProjected(
+                        user.id(),
+                        account.existing(),
+                        projectedPositions,
+                        batchOpenSells,
+                        buyPlan,
+                        sellPlan);
             }
         }
 
@@ -415,38 +530,87 @@ public class TransactionBatchImportService {
     private TransactionBatchRowPreview preview(
             int row,
             TransactionRowDocument source,
-            BuyTransactionPlan plan,
+            BuyTransactionPlan buyPlan,
+            SellTransactionPlan sellPlan,
             boolean rejected,
             List<ImportIssue> issues) {
+        var fund = buyPlan != null
+                ? buyPlan.fund()
+                : sellPlan == null ? null : sellPlan.fund();
+        var status = buyPlan != null
+                ? buyPlan.status()
+                : sellPlan == null ? null : sellPlan.status();
         return new TransactionBatchRowPreview(
                 row,
                 source.rowId(),
                 source.fundCode(),
-                plan == null ? null : plan.fund().name(),
+                fund == null ? null : fund.name(),
                 source.type(),
+                sellPlan == null
+                        ? null
+                        : sellPlan.command().sellMode(),
                 rejected
                         ? TransactionImportAction.REJECT
                         : TransactionImportAction.IMPORT,
-                plan == null ? null : plan.status(),
+                status,
                 source.amount(),
-                plan == null ? null : plan.feeAmount(),
-                plan == null ? null : plan.netAmount(),
-                plan == null ? null : plan.shares(),
-                plan == null ? null : plan.effectiveDate(),
-                plan == null ? null : plan.holdingStartDate(),
-                plan == null ? null : plan.navDate(),
-                plan == null ? null : plan.unitNav(),
-                plan == null ? null : plan.navSource(),
-                plan == null ? null : plan.feeRate(),
-                plan == null ? null : plan.feeSource(),
-                plan == null ? null : plan.pendingReason(),
+                buyPlan == null ? null : buyPlan.feeAmount(),
+                buyPlan == null ? null : buyPlan.netAmount(),
+                sellPlan == null
+                        ? null
+                        : sellPlan.command().expectedAmount(),
+                sellPlan == null
+                        ? null
+                        : sellPlan.command()
+                                .actualReceivedAmount(),
+                sellPlan == null || sellPlan.impact() == null
+                        ? null
+                        : sellPlan.impact().removedCost(),
+                sellPlan == null || sellPlan.impact() == null
+                        ? null
+                        : sellPlan.impact().realizedProfit(),
+                buyPlan != null
+                        ? buyPlan.shares()
+                        : sellPlan == null
+                                ? null
+                                : sellPlan.soldShares(),
+                buyPlan != null
+                        ? buyPlan.effectiveDate()
+                        : sellPlan == null
+                                ? null
+                                : sellPlan.effectiveDate(),
+                buyPlan == null
+                        ? null
+                        : buyPlan.holdingStartDate(),
+                buyPlan != null
+                        ? buyPlan.navDate()
+                        : sellPlan == null
+                                ? null
+                                : sellPlan.navDate(),
+                buyPlan != null
+                        ? buyPlan.unitNav()
+                        : sellPlan == null
+                                ? null
+                                : sellPlan.unitNav(),
+                buyPlan != null
+                        ? buyPlan.navSource()
+                        : sellPlan == null
+                                ? null
+                                : sellPlan.navSource(),
+                buyPlan == null ? null : buyPlan.feeRate(),
+                buyPlan == null ? null : buyPlan.feeSource(),
+                buyPlan != null
+                        ? buyPlan.pendingReason()
+                        : sellPlan == null
+                                ? null
+                                : sellPlan.pendingReason(),
                 List.copyOf(issues));
     }
 
     private void validateSnapshotBoundary(
             long userId,
             FundAccount account,
-            BuyTransactionPlan plan,
+            LocalDate effectiveDate,
             int row,
             int index,
             List<ImportIssue> issues) {
@@ -460,13 +624,95 @@ public class TransactionBatchImportService {
                         .atZone(clock.getZone())
                         .toLocalDate())
                 .filter(snapshotDate ->
-                        !plan.effectiveDate().isAfter(snapshotDate))
+                        !effectiveDate.isAfter(snapshotDate))
                 .ifPresent(snapshotDate ->
                         issues.add(ImportIssue.error(
                                 row,
                                 field(index, "submittedDate"),
                                 "HISTORY_REBUILD_REQUIRED",
                                 "交易不晚于最近持仓快照，不能直接追加，需要先重建历史")));
+    }
+
+    private void validateNoOpenSell(
+            long userId,
+            FundAccount account,
+            long fundId,
+            Set<Long> batchOpenSells,
+            int row,
+            int index,
+            List<ImportIssue> issues) {
+        boolean existingOpen = account != null
+                && portfolioRepository.existsOpenSell(
+                        userId,
+                        account.id(),
+                        fundId);
+        if (existingOpen || batchOpenSells.contains(fundId)) {
+            issues.add(ImportIssue.error(
+                    row,
+                    field(index, "fundCode"),
+                    "OPEN_SELL_CONFLICT",
+                    "该基金存在待确认或待校准卖出，处理完成前不能继续交易"));
+        }
+    }
+
+    private void applyProjected(
+            long userId,
+            FundAccount account,
+            Map<Long, FundPosition> positions,
+            Set<Long> batchOpenSells,
+            BuyTransactionPlan buyPlan,
+            SellTransactionPlan sellPlan) {
+        Instant now = clock.instant();
+        long accountId = account == null ? 0 : account.id();
+        if (buyPlan != null
+                && (buyPlan.status()
+                                == TransactionStatus.CONFIRMED
+                        || buyPlan.status()
+                                == TransactionStatus.ESTIMATED)) {
+            FundPosition current =
+                    positions.get(buyPlan.fund().id());
+            FundPosition projected = current == null
+                    ? FundPosition.fromBuy(
+                            userId,
+                            accountId,
+                            buyPlan.fund().id(),
+                            buyPlan.shares(),
+                            buyPlan.command().amount(),
+                            buyPlan.status(),
+                            buyPlan.holdingStartDate(),
+                            now)
+                    : current.applyBuy(
+                            buyPlan.shares(),
+                            buyPlan.command().amount(),
+                            buyPlan.status(),
+                            buyPlan.holdingStartDate(),
+                            now);
+            positions.put(buyPlan.fund().id(), projected);
+            return;
+        }
+        if (sellPlan == null) {
+            return;
+        }
+        if (sellPlan.appliesToPosition()) {
+            FundPosition current =
+                    positions.get(sellPlan.fund().id());
+            if (sellPlan.impact().clearsPosition()) {
+                positions.remove(sellPlan.fund().id());
+            } else {
+                positions.put(
+                        sellPlan.fund().id(),
+                        current.applySell(
+                                sellPlan.impact(),
+                                sellPlan.status(),
+                                now));
+            }
+        }
+        if (sellPlan.status()
+                        == TransactionStatus.PENDING
+                || sellPlan.status()
+                        == TransactionStatus.ESTIMATED) {
+            batchOpenSells.add(sellPlan.fund().id());
+        }
     }
 
     private AccountMatch matchAccount(
@@ -656,6 +902,52 @@ public class TransactionBatchImportService {
                         "买入交易不能填写卖出字段"));
             }
         }
+        if ("SELL".equals(value.type())) {
+            if (value.amount() != null) {
+                issues.add(ImportIssue.error(
+                        row,
+                        field(index, "amount"),
+                        "BUY_FIELD_NOT_ALLOWED",
+                        "卖出交易不能填写买入金额 amount"));
+            }
+            SellMode sellMode = parseSellMode(value.sellMode());
+            if (sellMode == null) {
+                issues.add(ImportIssue.error(
+                        row,
+                        field(index, "sellMode"),
+                        "INVALID_SELL_MODE",
+                        "sellMode 必须为 PARTIAL 或 FULL"));
+            }
+            if (sellMode == SellMode.PARTIAL) {
+                validatePositive(
+                        value.expectedAmount(),
+                        MONEY_SCALE,
+                        row,
+                        field(index, "expectedAmount"),
+                        "INVALID_EXPECTED_AMOUNT",
+                        "部分卖出预计到账金额必须大于 0，且最多 4 位小数",
+                        issues);
+            } else if (value.expectedAmount() != null) {
+                validatePositive(
+                        value.expectedAmount(),
+                        MONEY_SCALE,
+                        row,
+                        field(index, "expectedAmount"),
+                        "INVALID_EXPECTED_AMOUNT",
+                        "预计到账金额必须大于 0，且最多 4 位小数",
+                        issues);
+            }
+            if (value.actualReceivedAmount() != null) {
+                validatePositive(
+                        value.actualReceivedAmount(),
+                        MONEY_SCALE,
+                        row,
+                        field(index, "actualReceivedAmount"),
+                        "INVALID_ACTUAL_RECEIVED_AMOUNT",
+                        "实际到账金额必须大于 0，且最多 4 位小数",
+                        issues);
+            }
+        }
         if (value.submittedDate() == null) {
             issues.add(ImportIssue.error(
                     row,
@@ -681,12 +973,23 @@ public class TransactionBatchImportService {
                     issues);
         }
         if (value.confirmedDate() != null
+                && "BUY".equals(value.type())
                 && value.confirmedShares() == null) {
             issues.add(ImportIssue.error(
                     row,
                     field(index, "confirmedDate"),
                     "CONFIRMED_SHARES_REQUIRED",
                     "填写确认日期时必须同时填写平台确认份额"));
+        }
+        if (value.confirmedDate() != null
+                && "SELL".equals(value.type())
+                && value.confirmedShares() == null
+                && value.actualReceivedAmount() == null) {
+            issues.add(ImportIssue.error(
+                    row,
+                    field(index, "confirmedDate"),
+                    "SELL_CONFIRMATION_REQUIRED",
+                    "填写确认日期时必须同时填写确认份额或实际到账金额"));
         }
         if (value.note() != null
                 && value.note().length() > 500) {
@@ -711,6 +1014,28 @@ public class TransactionBatchImportService {
                 "preflight-account",
                 value.fundCode(),
                 value.amount(),
+                value.submittedDate(),
+                parseSubmittedPeriod(value.submittedPeriod()),
+                value.confirmedShares(),
+                value.confirmedDate(),
+                note);
+    }
+
+    private SellTransactionCommand sellCommand(
+            int row,
+            String batchId,
+            TransactionRowDocument value) {
+        String note = value.note() == null
+                || value.note().isBlank()
+                        ? "JSON 批量交易导入：" + batchId
+                        : value.note();
+        return new SellTransactionCommand(
+                "preflight:" + row,
+                "preflight-account",
+                value.fundCode(),
+                parseSellMode(value.sellMode()),
+                value.expectedAmount(),
+                value.actualReceivedAmount(),
                 value.submittedDate(),
                 parseSubmittedPeriod(value.submittedPeriod()),
                 value.confirmedShares(),
@@ -923,6 +1248,7 @@ public class TransactionBatchImportService {
                     row,
                     value,
                     null,
+                    null,
                     true,
                     rowIssues));
         }
@@ -964,35 +1290,75 @@ public class TransactionBatchImportService {
                         + ":"
                         + account.existing().updatedAt());
         for (TransactionPlan value : plans) {
-            BuyTransactionPlan plan = value.plan();
             material.append('|')
                     .append(value.row())
                     .append(':')
                     .append(value.source().rowId())
                     .append(':')
-                    .append(plan.fund().id())
+                    .append(value.source().type())
                     .append(':')
-                    .append(plan.status())
-                    .append(':')
-                    .append(plan.command().amount())
-                    .append(':')
-                    .append(plan.effectiveDate())
-                    .append(':')
-                    .append(plan.feeAmount())
-                    .append(':')
-                    .append(plan.netAmount())
-                    .append(':')
-                    .append(plan.shares())
-                    .append(':')
-                    .append(plan.navDate())
-                    .append(':')
-                    .append(plan.unitNav())
-                    .append(':')
-                    .append(plan.feeRate())
-                    .append(':')
-                    .append(plan.holdingStartDate());
+                    .append(value.positionFingerprintBefore());
+            if (value.buyPlan() != null) {
+                BuyTransactionPlan plan = value.buyPlan();
+                material.append(':')
+                        .append(plan.fund().id())
+                        .append(':')
+                        .append(plan.status())
+                        .append(':')
+                        .append(plan.command().amount())
+                        .append(':')
+                        .append(plan.effectiveDate())
+                        .append(':')
+                        .append(plan.feeAmount())
+                        .append(':')
+                        .append(plan.netAmount())
+                        .append(':')
+                        .append(plan.shares())
+                        .append(':')
+                        .append(plan.navDate())
+                        .append(':')
+                        .append(plan.unitNav())
+                        .append(':')
+                        .append(plan.feeRate())
+                        .append(':')
+                        .append(plan.holdingStartDate());
+            } else {
+                SellTransactionPlan plan = value.sellPlan();
+                material.append(':')
+                        .append(plan.fund().id())
+                        .append(':')
+                        .append(plan.status())
+                        .append(':')
+                        .append(plan.command().sellMode())
+                        .append(':')
+                        .append(plan.amount())
+                        .append(':')
+                        .append(plan.soldShares())
+                        .append(':')
+                        .append(plan.effectiveDate())
+                        .append(':')
+                        .append(plan.navDate())
+                        .append(':')
+                        .append(plan.unitNav())
+                        .append(':')
+                        .append(plan.impact());
+            }
         }
         return fingerprint.create(material.toString());
+    }
+
+    private String positionFingerprint(
+            FundPosition position) {
+        if (position == null) {
+            return "none";
+        }
+        return position.shares()
+                + ":"
+                + position.remainingCost()
+                + ":"
+                + position.status()
+                + ":"
+                + position.holdingStartDate();
     }
 
     private String contentHash(
@@ -1108,6 +1474,16 @@ public class TransactionBatchImportService {
         }
     }
 
+    private SellMode parseSellMode(String value) {
+        try {
+            return value == null
+                    ? null
+                    : SellMode.valueOf(value);
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
     private String issueCode(ErrorCode errorCode) {
         if (errorCode == ErrorCode.TRANSACTION_BEFORE_SNAPSHOT) {
             return "HISTORY_REBUILD_REQUIRED";
@@ -1214,7 +1590,9 @@ public class TransactionBatchImportService {
     private record TransactionPlan(
             int row,
             TransactionRowDocument source,
-            BuyTransactionPlan plan) {
+            BuyTransactionPlan buyPlan,
+            SellTransactionPlan sellPlan,
+            String positionFingerprintBefore) {
     }
 
     private record Analysis(

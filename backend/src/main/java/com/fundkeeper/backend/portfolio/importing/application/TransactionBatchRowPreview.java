@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.fundkeeper.backend.portfolio.domain.PendingReason;
+import com.fundkeeper.backend.portfolio.domain.SellMode;
 import com.fundkeeper.backend.portfolio.domain.TransactionStatus;
 import com.fundkeeper.backend.portfolio.importing.domain.TransactionImportAction;
 
@@ -14,11 +15,16 @@ public record TransactionBatchRowPreview(
         String fundCode,
         String fundName,
         String type,
+        SellMode sellMode,
         TransactionImportAction action,
         TransactionStatus transactionStatus,
         BigDecimal amount,
         BigDecimal feeAmount,
         BigDecimal netAmount,
+        BigDecimal expectedAmount,
+        BigDecimal actualReceivedAmount,
+        BigDecimal removedCost,
+        BigDecimal realizedProfit,
         BigDecimal calculatedShares,
         LocalDate effectiveTradeDate,
         LocalDate holdingStartDate,
