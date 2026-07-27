@@ -16,11 +16,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.fundkeeper.backend.portfolio.application.BuyTransactionStateService;
 import com.fundkeeper.backend.portfolio.application.FundPortfolioDetailService;
 import com.fundkeeper.backend.portfolio.application.PortfolioOverviewService;
 import com.fundkeeper.backend.portfolio.application.PortfolioService;
 import com.fundkeeper.backend.portfolio.application.PositionValuationService;
 import com.fundkeeper.backend.portfolio.application.SellTransactionService;
+import com.fundkeeper.backend.portfolio.application.TransactionCancellationService;
 import com.fundkeeper.backend.shared.api.ApiResponse;
 
 @RestController
@@ -28,21 +30,28 @@ import com.fundkeeper.backend.shared.api.ApiResponse;
 public class PortfolioController {
 
     private final PortfolioService portfolioService;
+    private final BuyTransactionStateService buyTransactionStateService;
     private final FundPortfolioDetailService fundPortfolioDetailService;
     private final PortfolioOverviewService portfolioOverviewService;
     private final SellTransactionService sellTransactionService;
+    private final TransactionCancellationService transactionCancellationService;
     private final PositionValuationService positionValuationService;
 
     public PortfolioController(
             PortfolioService portfolioService,
+            BuyTransactionStateService buyTransactionStateService,
             FundPortfolioDetailService fundPortfolioDetailService,
             PortfolioOverviewService portfolioOverviewService,
             SellTransactionService sellTransactionService,
+            TransactionCancellationService transactionCancellationService,
             PositionValuationService positionValuationService) {
         this.portfolioService = portfolioService;
+        this.buyTransactionStateService = buyTransactionStateService;
         this.fundPortfolioDetailService = fundPortfolioDetailService;
         this.portfolioOverviewService = portfolioOverviewService;
         this.sellTransactionService = sellTransactionService;
+        this.transactionCancellationService =
+                transactionCancellationService;
         this.positionValuationService = positionValuationService;
     }
 
@@ -75,15 +84,15 @@ public class PortfolioController {
     }
 
     @PostMapping("/transactions/{transactionId}/cancel")
-    ApiResponse<TransactionView> cancelSell(
+    ApiResponse<TransactionView> cancelTransaction(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable String transactionId,
-            @Valid @RequestBody SellCancellationRequest request) {
+            @Valid @RequestBody TransactionCancellationRequest request) {
         return ApiResponse.success(TransactionView.from(
-                sellTransactionService.cancel(
+                transactionCancellationService.cancel(
                         jwt.getSubject(),
                         transactionId,
-                        request.toCommand())));
+                        request.reason())));
     }
 
     @PostMapping("/transactions/buys")
@@ -100,6 +109,18 @@ public class PortfolioController {
                 : ResponseEntity
                         .status(HttpStatus.CREATED)
                         .body(response);
+    }
+
+    @PostMapping("/transactions/{transactionId}/buy-confirmation")
+    ApiResponse<TransactionView> confirmBuy(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable String transactionId,
+            @Valid @RequestBody BuyConfirmationRequest request) {
+        return ApiResponse.success(TransactionView.from(
+                buyTransactionStateService.confirm(
+                        jwt.getSubject(),
+                        transactionId,
+                        request.toCommand())));
     }
 
     @GetMapping("/transactions/requests/{requestId}")

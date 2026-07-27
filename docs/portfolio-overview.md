@@ -117,3 +117,6 @@ Authorization: Bearer <accessToken>
 `POSITION_NOT_FOUND`；如果存在未完成交易则仍可打开详情。纯待确认买入的
 详情中 `accounts` 为空，账户与待处理原因由 `openTransactions` 提供。
 这些规则不会暴露其他用户是否持有该基金。
+
+待确认买入的确认、撤销和安全边界见
+[手动买入与确认](manual-buy.md)。

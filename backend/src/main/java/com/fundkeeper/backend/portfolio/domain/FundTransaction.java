@@ -341,6 +341,93 @@ public record FundTransaction(
                 now);
     }
 
+    public FundTransaction confirmBuy(
+            BigDecimal finalShares,
+            LocalDate finalConfirmedDate,
+            Instant now) {
+        return new FundTransaction(
+                id,
+                publicId,
+                userId,
+                accountId,
+                fundId,
+                requestId,
+                requestFingerprint,
+                type,
+                sellMode,
+                TransactionStatus.CONFIRMED,
+                grossAmount,
+                feeAmount,
+                netAmount,
+                expectedAmount,
+                actualReceivedAmount,
+                removedCost,
+                realizedProfit,
+                finalShares,
+                positionSharesBefore,
+                positionCostBefore,
+                positionStatusBefore,
+                positionHoldingStartDateBefore,
+                submittedDate,
+                submittedPeriod,
+                effectiveTradeDate,
+                finalConfirmedDate,
+                navDate,
+                unitNav,
+                navSource,
+                feeRate,
+                feeSource,
+                null,
+                note,
+                null,
+                null,
+                createdAt,
+                now);
+    }
+
+    public FundTransaction cancelBuy(
+            String reason,
+            Instant now) {
+        return new FundTransaction(
+                id,
+                publicId,
+                userId,
+                accountId,
+                fundId,
+                requestId,
+                requestFingerprint,
+                type,
+                sellMode,
+                TransactionStatus.CANCELLED,
+                grossAmount,
+                feeAmount,
+                netAmount,
+                expectedAmount,
+                actualReceivedAmount,
+                removedCost,
+                realizedProfit,
+                shares,
+                positionSharesBefore,
+                positionCostBefore,
+                positionStatusBefore,
+                positionHoldingStartDateBefore,
+                submittedDate,
+                submittedPeriod,
+                effectiveTradeDate,
+                confirmedDate,
+                navDate,
+                unitNav,
+                navSource,
+                feeRate,
+                feeSource,
+                null,
+                note,
+                reason,
+                now,
+                createdAt,
+                now);
+    }
+
     public boolean appliesToPosition() {
         return status == TransactionStatus.ESTIMATED
                 || status == TransactionStatus.CONFIRMED;
