@@ -4,7 +4,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import jakarta.persistence.criteria.Predicate;
@@ -142,6 +144,35 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
                 money(result.getTotalRemovedCost()),
                 money(result.getTotalRealizedProfit()),
                 result.getOpenSellCount());
+    }
+
+    @Override
+    public Map<Long, SellTransactionSummary> summarizeSellsByFund(
+            long userId,
+            Collection<Long> accountIds) {
+        if (accountIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, SellTransactionSummary> summaries =
+                new LinkedHashMap<>();
+        transactionRepository.summarizeSellsByFund(
+                        userId,
+                        accountIds,
+                        TransactionType.SELL,
+                        TransactionStatus.CONFIRMED,
+                        List.of(
+                                TransactionStatus.PENDING,
+                                TransactionStatus.ESTIMATED))
+                .forEach(result -> summaries.put(
+                        result.getFundId(),
+                        new SellTransactionSummary(
+                                result.getConfirmedSellCount(),
+                                money(result
+                                        .getTotalActualReceivedAmount()),
+                                money(result.getTotalRemovedCost()),
+                                money(result.getTotalRealizedProfit()),
+                                result.getOpenSellCount())));
+        return Map.copyOf(summaries);
     }
 
     @Override

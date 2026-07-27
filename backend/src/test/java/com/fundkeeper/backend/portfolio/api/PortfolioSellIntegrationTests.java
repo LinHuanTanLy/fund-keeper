@@ -533,6 +533,116 @@ class PortfolioSellIntegrationTests {
     }
 
     @Test
+    void fundCardsAggregateSameFundAcrossAccounts()
+            throws Exception {
+        Session session = preparedPosition();
+        sell(
+                session.token(),
+                sellBody(
+                        "sell-card-confirmed-001",
+                        session.accountId(),
+                        "PARTIAL",
+                        "420.00",
+                        "390.00",
+                        "200.00000000",
+                        "2026-07-24"))
+                .andExpect(status().isCreated());
+        MvcResult createdAccount = mockMvc.perform(
+                        post("/api/v1/accounts")
+                                .header(
+                                        "Authorization",
+                                        bearer(session.token()))
+                                .contentType(
+                                        MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "name": "银行卡",
+                                          "platform": "BANK"
+                                        }
+                                        """))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String secondAccountId = JsonPath.read(
+                createdAccount.getResponse().getContentAsString(),
+                "$.data.id");
+        mockMvc.perform(post("/api/v1/transactions/buys")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "requestId": "buy-card-second-account-001",
+                                  "accountId": "%s",
+                                  "fundCode": "000001",
+                                  "amount": 200.00,
+                                  "submittedDate": "2026-07-24",
+                                  "submittedPeriod": "BEFORE_15",
+                                  "confirmedShares": 100.00000000,
+                                  "confirmedDate": "2026-07-24"
+                                }
+                                """.formatted(secondAccountId)))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/portfolio/funds")
+                        .header(
+                                "Authorization",
+                                bearer(session.token())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath(
+                        "$.data[0].fundCode",
+                        is("000001")))
+                .andExpect(jsonPath(
+                        "$.data[0].accountCount",
+                        is(2)))
+                .andExpect(jsonPath(
+                        "$.data[0].totalShares",
+                        is(400.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].holdingCost",
+                        is(800.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].currentMarketValue",
+                        is(800.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].currentHoldingProfit",
+                        is(0.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].currentHoldingReturnPercent",
+                        is(0.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].realizedProfit",
+                        is(-10.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].cumulativeProfit",
+                        is(-10.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].priceType",
+                        is("OFFICIAL")));
+
+        mockMvc.perform(get("/api/v1/portfolio/funds")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .param("accountId", secondAccountId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(1)))
+                .andExpect(jsonPath(
+                        "$.data[0].accountCount",
+                        is(1)))
+                .andExpect(jsonPath(
+                        "$.data[0].totalShares",
+                        is(100.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].holdingCost",
+                        is(200.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].realizedProfit",
+                        is(0.0)));
+    }
+
+    @Test
     void pendingFullSellKeepsPositionAndBlocksAnotherSell()
             throws Exception {
         Session session = preparedPosition();

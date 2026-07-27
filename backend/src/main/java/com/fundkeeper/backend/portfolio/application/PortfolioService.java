@@ -3,7 +3,6 @@ package com.fundkeeper.backend.portfolio.application;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -259,9 +258,7 @@ public class PortfolioService {
                             user.id(),
                             account.id());
         }
-        return positions.stream()
-                .map(position -> positionDetails(user.id(), position))
-                .toList();
+        return positionDetails(user.id(), positions);
     }
 
     private void applyBuyToPosition(
@@ -409,7 +406,15 @@ public class PortfolioService {
                 .collect(Collectors.toMap(
                         FundAccount::id,
                         Function.identity()));
-        Map<Long, FundDefinition> funds = new HashMap<>();
+        Map<Long, FundDefinition> funds = fundDataRepository
+                .findFundsByIds(transactions.stream()
+                        .map(FundTransaction::fundId)
+                        .distinct()
+                        .toList())
+                .stream()
+                .collect(Collectors.toMap(
+                        FundDefinition::id,
+                        Function.identity()));
         return transactions.stream()
                 .map(transaction -> {
                     FundAccount account = accounts.get(
@@ -418,13 +423,12 @@ public class PortfolioService {
                         throw new IllegalStateException(
                                 "Transaction account no longer exists");
                     }
-                    FundDefinition fund = funds.computeIfAbsent(
-                            transaction.fundId(),
-                            fundId -> fundDataRepository
-                                    .findFundById(fundId)
-                                    .orElseThrow(() ->
-                                            new IllegalStateException(
-                                                    "Transaction fund no longer exists")));
+                    FundDefinition fund = funds.get(
+                            transaction.fundId());
+                    if (fund == null) {
+                        throw new IllegalStateException(
+                                "Transaction fund no longer exists");
+                    }
                     return new TransactionDetails(
                             transaction,
                             account,
@@ -453,22 +457,40 @@ public class PortfolioService {
         return new TransactionDetails(transaction, account, fund);
     }
 
-    private PositionDetails positionDetails(
+    private List<PositionDetails> positionDetails(
             long userId,
-            FundPosition position) {
-        FundAccount account = accountRepository
+            List<FundPosition> positions) {
+        Map<Long, FundAccount> accounts = accountRepository
                 .findAllByUserId(userId, true)
                 .stream()
-                .filter(candidate ->
-                        candidate.id().equals(position.accountId()))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "Position account no longer exists"));
-        FundDefinition fund = fundDataRepository
-                .findFundById(position.fundId())
-                .orElseThrow(() -> new IllegalStateException(
-                        "Position fund no longer exists"));
-        return new PositionDetails(position, account, fund);
+                .collect(Collectors.toMap(
+                        FundAccount::id,
+                        Function.identity()));
+        Map<Long, FundDefinition> funds = fundDataRepository
+                .findFundsByIds(positions.stream()
+                        .map(FundPosition::fundId)
+                        .distinct()
+                        .toList())
+                .stream()
+                .collect(Collectors.toMap(
+                        FundDefinition::id,
+                        Function.identity()));
+        return positions.stream()
+                .map(position -> {
+                    FundAccount account = accounts.get(
+                            position.accountId());
+                    if (account == null) {
+                        throw new IllegalStateException(
+                                "Position account no longer exists");
+                    }
+                    FundDefinition fund = funds.get(position.fundId());
+                    if (fund == null) {
+                        throw new IllegalStateException(
+                                "Position fund no longer exists");
+                    }
+                    return new PositionDetails(position, account, fund);
+                })
+                .toList();
     }
 
 }

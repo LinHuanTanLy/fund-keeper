@@ -2,7 +2,9 @@ package com.fundkeeper.backend.portfolio.application;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,14 +38,20 @@ public class PositionValuationService {
     public List<PositionValuationDetails> list(
             String userPublicId,
             String accountPublicId) {
-        return portfolioService
-                .listPositions(userPublicId, accountPublicId)
+        List<PositionDetails> positions = portfolioService
+                .listPositions(userPublicId, accountPublicId);
+        Map<Long, PositionPrice> prices = new HashMap<>();
+        return positions
                 .stream()
-                .map(this::value)
+                .map(details -> value(
+                        details,
+                        prices.computeIfAbsent(
+                                details.fund().id(),
+                                ignored -> price(details))))
                 .toList();
     }
 
-    private PositionValuationDetails value(
+    private PositionPrice price(
             PositionDetails details) {
         var quote = valuationQueryService.quote(
                 details.fund().code());
@@ -51,8 +59,7 @@ public class PositionValuationService {
                 && quote.status() != ValuationStatus.STALE) {
             IntradayValuation valuation =
                     quote.valuation().get();
-            return details(
-                    details,
+            return new PositionPrice(
                     quote.status(),
                     ValuationPriceType.ESTIMATED,
                     valuation.estimatedNav(),
@@ -68,8 +75,7 @@ public class PositionValuationService {
                 .findLatestOfficialNav(details.fund().id());
         if (official.isPresent()) {
             OfficialNav nav = official.get();
-            return details(
-                    details,
+            return new PositionPrice(
                     quote.status(),
                     ValuationPriceType.OFFICIAL,
                     nav.unitNav(),
@@ -80,8 +86,7 @@ public class PositionValuationService {
                     null,
                     nav.dataSource());
         }
-        return new PositionValuationDetails(
-                details,
+        return new PositionPrice(
                 quote.status(),
                 null,
                 null,
@@ -90,11 +95,40 @@ public class PositionValuationService {
                 null,
                 null,
                 null,
-                null,
-                null,
-                null,
-                null,
                 null);
+    }
+
+    private PositionValuationDetails value(
+            PositionDetails details,
+            PositionPrice price) {
+        if (price.unitNav() != null) {
+            return details(
+                    details,
+                    price.status(),
+                    price.priceType(),
+                    price.unitNav(),
+                    price.estimatedChangePercent(),
+                    price.baseNavDate(),
+                    price.baseNav(),
+                    price.dataDate(),
+                    price.observedAt(),
+                    price.dataSource());
+        }
+        return new PositionValuationDetails(
+                details,
+                price.status(),
+                price.priceType(),
+                price.unitNav(),
+                price.estimatedChangePercent(),
+                price.baseNavDate(),
+                price.baseNav(),
+                null,
+                null,
+                null,
+                null,
+                price.dataDate(),
+                price.observedAt(),
+                price.dataSource());
     }
 
     private PositionValuationDetails details(
@@ -148,5 +182,17 @@ public class PositionValuationService {
                 dataDate,
                 observedAt,
                 dataSource);
+    }
+
+    private record PositionPrice(
+            ValuationStatus status,
+            ValuationPriceType priceType,
+            BigDecimal unitNav,
+            BigDecimal estimatedChangePercent,
+            java.time.LocalDate baseNavDate,
+            BigDecimal baseNav,
+            java.time.LocalDate dataDate,
+            java.time.Instant observedAt,
+            String dataSource) {
     }
 }

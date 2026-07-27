@@ -172,6 +172,17 @@ public class PortfolioController {
                         accountId)));
     }
 
+    @GetMapping("/portfolio/funds")
+    ApiResponse<List<FundPortfolioCardView>> fundCards(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(required = false) String accountId) {
+        return ApiResponse.success(portfolioOverviewService
+                .listFunds(jwt.getSubject(), accountId)
+                .stream()
+                .map(FundPortfolioCardView::from)
+                .toList());
+    }
+
     @GetMapping("/positions/valuations")
     ApiResponse<List<PositionValuationView>> positionValuations(
             @AuthenticationPrincipal Jwt jwt,

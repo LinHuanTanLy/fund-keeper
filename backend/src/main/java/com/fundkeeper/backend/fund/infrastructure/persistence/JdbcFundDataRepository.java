@@ -4,10 +4,13 @@ import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import com.fundkeeper.backend.fund.domain.FeeCalculationMethod;
@@ -28,9 +31,12 @@ public class JdbcFundDataRepository implements FundDataRepository {
             """;
 
     private final JdbcTemplate jdbcTemplate;
+    private final NamedParameterJdbcTemplate namedJdbcTemplate;
 
     public JdbcFundDataRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+        this.namedJdbcTemplate =
+                new NamedParameterJdbcTemplate(jdbcTemplate);
     }
 
     @Override
@@ -47,6 +53,18 @@ public class JdbcFundDataRepository implements FundDataRepository {
                 FUND_COLUMNS + " WHERE id = ?",
                 this::mapFund,
                 id));
+    }
+
+    @Override
+    public List<FundDefinition> findFundsByIds(
+            Collection<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return namedJdbcTemplate.query(
+                FUND_COLUMNS + " WHERE id IN (:ids)",
+                Map.of("ids", ids),
+                this::mapFund);
     }
 
     @Override

@@ -2,6 +2,7 @@ package com.fundkeeper.backend.portfolio.domain;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public interface PortfolioRepository {
@@ -24,6 +25,10 @@ public interface PortfolioRepository {
             long userId,
             Collection<Long> accountIds,
             Long fundId);
+
+    Map<Long, SellTransactionSummary> summarizeSellsByFund(
+            long userId,
+            Collection<Long> accountIds);
 
     Optional<FundPosition> findPositionByAccountIdAndFundId(
             long accountId,

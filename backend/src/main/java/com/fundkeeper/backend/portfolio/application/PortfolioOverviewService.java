@@ -6,7 +6,9 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -17,9 +19,11 @@ import com.fundkeeper.backend.account.domain.FundAccount;
 import com.fundkeeper.backend.account.domain.FundAccountRepository;
 import com.fundkeeper.backend.auth.domain.User;
 import com.fundkeeper.backend.auth.domain.UserRepository;
+import com.fundkeeper.backend.fund.domain.FundDefinition;
 import com.fundkeeper.backend.fund.valuation.domain.ValuationStatus;
 import com.fundkeeper.backend.portfolio.domain.PortfolioRepository;
 import com.fundkeeper.backend.portfolio.domain.PositionStatus;
+import com.fundkeeper.backend.portfolio.domain.SellTransactionSummary;
 import com.fundkeeper.backend.shared.exception.BusinessException;
 import com.fundkeeper.backend.shared.exception.ErrorCode;
 
@@ -52,6 +56,52 @@ public class PortfolioOverviewService {
     public PortfolioOverviewDetails get(
             String userPublicId,
             String accountPublicId) {
+        PortfolioScope scope = scope(
+                userPublicId,
+                accountPublicId);
+        return calculate(
+                scope.positions(),
+                portfolioRepository.summarizeSells(
+                        scope.user().id(),
+                        scope.accountIds(),
+                        null));
+    }
+
+    @Transactional(readOnly = true)
+    public List<FundPortfolioCardDetails> listFunds(
+            String userPublicId,
+            String accountPublicId) {
+        PortfolioScope scope = scope(
+                userPublicId,
+                accountPublicId);
+        Map<Long, SellTransactionSummary> sellSummaries =
+                portfolioRepository.summarizeSellsByFund(
+                        scope.user().id(),
+                        scope.accountIds());
+        Map<Long, List<PositionValuationDetails>> byFund =
+                scope.positions()
+                        .stream()
+                        .collect(Collectors.groupingBy(
+                                details -> details
+                                        .positionDetails()
+                                        .fund()
+                                        .id(),
+                                LinkedHashMap::new,
+                                Collectors.toList()));
+        return byFund.entrySet()
+                .stream()
+                .map(entry -> fundCard(
+                        entry.getValue(),
+                        sellSummaries.getOrDefault(
+                                entry.getKey(),
+                                emptySellSummary())))
+                .sorted(cardOrder())
+                .toList();
+    }
+
+    private PortfolioScope scope(
+            String userPublicId,
+            String accountPublicId) {
         User user = activeUser(userPublicId);
         List<FundAccount> accounts = activeAccounts(
                 user.id(),
@@ -68,11 +118,12 @@ public class PortfolioOverviewService {
                                         .account()
                                         .id()))
                         .toList();
-        var sellSummary = portfolioRepository.summarizeSells(
-                user.id(),
-                accountIds,
-                null);
+        return new PortfolioScope(user, accountIds, positions);
+    }
 
+    private PortfolioOverviewDetails calculate(
+            List<PositionValuationDetails> positions,
+            SellTransactionSummary sellSummary) {
         List<PositionValuationDetails> valued = positions.stream()
                 .filter(details -> details.marketValue() != null)
                 .toList();
@@ -94,6 +145,11 @@ public class PortfolioOverviewService {
                 ? null
                 : money(currentHoldingProfit.add(
                         sellSummary.totalRealizedProfit()));
+        BigDecimal currentHoldingReturnPercent = percentage(
+                currentHoldingProfit,
+                currentHoldingProfit == null
+                        ? null
+                        : valuedHoldingCost);
         BigDecimal returnCostBasis = currentHoldingProfit == null
                 ? null
                 : money(valuedHoldingCost.add(
@@ -124,6 +180,7 @@ public class PortfolioOverviewService {
                 valuedHoldingCost,
                 currentMarketValue,
                 currentHoldingProfit,
+                currentHoldingReturnPercent,
                 sellSummary.totalRealizedProfit(),
                 cumulativeProfit,
                 returnCostBasis,
@@ -146,6 +203,52 @@ public class PortfolioOverviewService {
                         .orElse(null),
                 holdingStartDate,
                 holdingDays(holdingStartDate));
+    }
+
+    private FundPortfolioCardDetails fundCard(
+            List<PositionValuationDetails> positions,
+            SellTransactionSummary sellSummary) {
+        FundDefinition fund = positions.getFirst()
+                .positionDetails()
+                .fund();
+        int accountCount = (int) positions.stream()
+                .map(details -> details
+                        .positionDetails()
+                        .account()
+                        .id())
+                .distinct()
+                .count();
+        BigDecimal totalShares = positions.stream()
+                .map(details -> details
+                        .positionDetails()
+                        .position()
+                        .shares())
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(8, RoundingMode.HALF_UP);
+        return new FundPortfolioCardDetails(
+                fund,
+                accountCount,
+                totalShares,
+                calculate(positions, sellSummary));
+    }
+
+    private Comparator<FundPortfolioCardDetails> cardOrder() {
+        return Comparator
+                .comparing(
+                        (FundPortfolioCardDetails card) ->
+                                card.metrics().currentMarketValue(),
+                        Comparator.nullsLast(
+                                Comparator.reverseOrder()))
+                .thenComparing(card -> card.fund().code());
+    }
+
+    private SellTransactionSummary emptySellSummary() {
+        return new SellTransactionSummary(
+                0,
+                money(BigDecimal.ZERO),
+                money(BigDecimal.ZERO),
+                money(BigDecimal.ZERO),
+                0);
     }
 
     private User activeUser(String publicId) {
@@ -278,5 +381,11 @@ public class PortfolioOverviewService {
 
     private BigDecimal money(BigDecimal value) {
         return value.setScale(MONEY_SCALE, RoundingMode.HALF_UP);
+    }
+
+    private record PortfolioScope(
+            User user,
+            Set<Long> accountIds,
+            List<PositionValuationDetails> positions) {
     }
 }

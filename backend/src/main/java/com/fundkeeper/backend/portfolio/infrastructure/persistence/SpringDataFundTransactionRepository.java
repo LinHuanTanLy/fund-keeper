@@ -1,6 +1,7 @@
 package com.fundkeeper.backend.portfolio.infrastructure.persistence;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -75,6 +76,41 @@ interface SpringDataFundTransactionRepository
             @Param("userId") long userId,
             @Param("accountIds") Collection<Long> accountIds,
             @Param("fundId") Long fundId,
+            @Param("sellType") TransactionType sellType,
+            @Param("confirmedStatus") TransactionStatus confirmedStatus,
+            @Param("openStatuses")
+            Collection<TransactionStatus> openStatuses);
+
+    @Query("""
+            SELECT
+                t.fundId AS fundId,
+                COALESCE(SUM(CASE
+                    WHEN t.status = :confirmedStatus
+                    THEN 1 ELSE 0 END), 0) AS confirmedSellCount,
+                COALESCE(SUM(CASE
+                    WHEN t.status = :confirmedStatus
+                    THEN t.actualReceivedAmount ELSE 0 END), 0)
+                    AS totalActualReceivedAmount,
+                COALESCE(SUM(CASE
+                    WHEN t.status = :confirmedStatus
+                    THEN t.removedCost ELSE 0 END), 0)
+                    AS totalRemovedCost,
+                COALESCE(SUM(CASE
+                    WHEN t.status = :confirmedStatus
+                    THEN t.realizedProfit ELSE 0 END), 0)
+                    AS totalRealizedProfit,
+                COALESCE(SUM(CASE
+                    WHEN t.status IN (:openStatuses)
+                    THEN 1 ELSE 0 END), 0) AS openSellCount
+            FROM FundTransactionJpaEntity t
+            WHERE t.userId = :userId
+              AND t.type = :sellType
+              AND t.accountId IN (:accountIds)
+            GROUP BY t.fundId
+            """)
+    List<FundSellSummaryProjection> summarizeSellsByFund(
+            @Param("userId") long userId,
+            @Param("accountIds") Collection<Long> accountIds,
             @Param("sellType") TransactionType sellType,
             @Param("confirmedStatus") TransactionStatus confirmedStatus,
             @Param("openStatuses")

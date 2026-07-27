@@ -10,6 +10,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -109,6 +110,8 @@ class PortfolioOverviewServiceTests {
                 .isEqualByComparingTo("660.0000");
         assertThat(result.currentHoldingProfit())
                 .isEqualByComparingTo("60.0000");
+        assertThat(result.currentHoldingReturnPercent())
+                .isEqualByComparingTo("10.0000");
         assertThat(result.realizedProfit())
                 .isEqualByComparingTo("-10.0000");
         assertThat(result.cumulativeProfit())
@@ -193,6 +196,93 @@ class PortfolioOverviewServiceTests {
         assertThat(result.containsEstimatedData()).isTrue();
     }
 
+    @Test
+    void groupsSameFundAcrossAccountsAndSortsMissingPricesLast() {
+        FundAccount secondAccount = new FundAccount(
+                11L,
+                "account-2",
+                1L,
+                "银行卡",
+                "银行卡",
+                AccountPlatform.BANK,
+                AccountStatus.ACTIVE,
+                NOW,
+                NOW,
+                null);
+        when(accountRepository.findAllByUserId(1L, false))
+                .thenReturn(List.of(account, secondAccount));
+        PositionValuationDetails first = intradayValuation(
+                position(
+                        100L,
+                        1000L,
+                        "300",
+                        "600",
+                        "2026-07-01",
+                        account),
+                "660",
+                "60",
+                "60");
+        PositionValuationDetails second = intradayValuation(
+                position(
+                        101L,
+                        1000L,
+                        "150",
+                        "300",
+                        "2026-07-10",
+                        secondAccount),
+                "330",
+                "30",
+                "30");
+        PositionValuationDetails missing = missingValuation(
+                position(
+                        102L,
+                        1001L,
+                        "5",
+                        "50",
+                        "2026-07-20",
+                        account));
+        when(valuationService.list("user-1", null))
+                .thenReturn(List.of(first, missing, second));
+        when(portfolioRepository.summarizeSellsByFund(
+                        1L,
+                        Set.of(10L, 11L)))
+                .thenReturn(Map.of(
+                        1000L,
+                        summary("390", "400", "-10", 0)));
+
+        List<FundPortfolioCardDetails> cards =
+                service.listFunds("user-1", null);
+
+        assertThat(cards).hasSize(2);
+        FundPortfolioCardDetails aggregated = cards.getFirst();
+        assertThat(aggregated.fund().code()).isEqualTo("000001");
+        assertThat(aggregated.accountCount()).isEqualTo(2);
+        assertThat(aggregated.totalShares())
+                .isEqualByComparingTo("450.00000000");
+        assertThat(aggregated.metrics().totalHoldingCost())
+                .isEqualByComparingTo("900.0000");
+        assertThat(aggregated.metrics().currentMarketValue())
+                .isEqualByComparingTo("990.0000");
+        assertThat(aggregated.metrics().currentHoldingProfit())
+                .isEqualByComparingTo("90.0000");
+        assertThat(aggregated.metrics()
+                        .currentHoldingReturnPercent())
+                .isEqualByComparingTo("10.0000");
+        assertThat(aggregated.metrics().realizedProfit())
+                .isEqualByComparingTo("-10.0000");
+        assertThat(aggregated.metrics().cumulativeProfit())
+                .isEqualByComparingTo("80.0000");
+        assertThat(aggregated.metrics().todayEstimatedProfit())
+                .isEqualByComparingTo("90.0000");
+        assertThat(aggregated.metrics().holdingStartDate())
+                .isEqualTo(LocalDate.of(2026, 7, 1));
+
+        FundPortfolioCardDetails unavailable = cards.get(1);
+        assertThat(unavailable.fund().code()).isEqualTo("000002");
+        assertThat(unavailable.metrics().currentMarketValue()).isNull();
+        assertThat(unavailable.metrics().valuationComplete()).isFalse();
+    }
+
     private PositionValuationDetails intradayValuation(
             PositionDetails position,
             String marketValue,
@@ -261,11 +351,27 @@ class PortfolioOverviewServiceTests {
             String shares,
             String cost,
             String holdingStartDate) {
+        return position(
+                id,
+                fundId,
+                shares,
+                cost,
+                holdingStartDate,
+                account);
+    }
+
+    private PositionDetails position(
+            long id,
+            long fundId,
+            String shares,
+            String cost,
+            String holdingStartDate,
+            FundAccount positionAccount) {
         FundPosition position = new FundPosition(
                 id,
                 "position-" + id,
                 1L,
-                10L,
+                positionAccount.id(),
                 fundId,
                 new BigDecimal(shares),
                 new BigDecimal(cost),
@@ -286,7 +392,7 @@ class PortfolioOverviewServiceTests {
                 "test",
                 NOW,
                 NOW);
-        return new PositionDetails(position, account, fund);
+        return new PositionDetails(position, positionAccount, fund);
     }
 
     private SellTransactionSummary summary(

@@ -14,6 +14,7 @@ public record PortfolioOverviewDetails(
         BigDecimal valuedHoldingCost,
         BigDecimal currentMarketValue,
         BigDecimal currentHoldingProfit,
+        BigDecimal currentHoldingReturnPercent,
         BigDecimal realizedProfit,
         BigDecimal cumulativeProfit,
         BigDecimal returnCostBasis,
