@@ -40,7 +40,10 @@ public record TransactionView(
         String feeSource,
         PendingReason pendingReason,
         String note,
-        Instant createdAt) {
+        String cancellationReason,
+        Instant cancelledAt,
+        Instant createdAt,
+        Instant updatedAt) {
 
     static TransactionView from(TransactionDetails details) {
         var transaction = details.transaction();
@@ -73,6 +76,9 @@ public record TransactionView(
                 transaction.feeSource(),
                 transaction.pendingReason(),
                 transaction.note(),
-                transaction.createdAt());
+                transaction.cancellationReason(),
+                transaction.cancelledAt(),
+                transaction.createdAt(),
+                transaction.updatedAt());
     }
 }

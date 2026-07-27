@@ -16,6 +16,7 @@ import jakarta.persistence.Version;
 
 import com.fundkeeper.backend.portfolio.domain.FundTransaction;
 import com.fundkeeper.backend.portfolio.domain.PendingReason;
+import com.fundkeeper.backend.portfolio.domain.PositionStatus;
 import com.fundkeeper.backend.portfolio.domain.SellMode;
 import com.fundkeeper.backend.portfolio.domain.SubmittedPeriod;
 import com.fundkeeper.backend.portfolio.domain.TransactionStatus;
@@ -83,6 +84,19 @@ class FundTransactionJpaEntity {
     @Column(precision = 24, scale = 8)
     private BigDecimal shares;
 
+    @Column(name = "position_shares_before", precision = 24, scale = 8)
+    private BigDecimal positionSharesBefore;
+
+    @Column(name = "position_cost_before", precision = 19, scale = 4)
+    private BigDecimal positionCostBefore;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "position_status_before", length = 32)
+    private PositionStatus positionStatusBefore;
+
+    @Column(name = "position_holding_start_date_before")
+    private LocalDate positionHoldingStartDateBefore;
+
     @Column(name = "submitted_date", nullable = false)
     private LocalDate submittedDate;
 
@@ -118,6 +132,12 @@ class FundTransactionJpaEntity {
     @Column(length = 500)
     private String note;
 
+    @Column(name = "cancellation_reason", length = 500)
+    private String cancellationReason;
+
+    @Column(name = "cancelled_at")
+    private Instant cancelledAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -151,6 +171,14 @@ class FundTransactionJpaEntity {
         this.removedCost = transaction.removedCost();
         this.realizedProfit = transaction.realizedProfit();
         this.shares = transaction.shares();
+        this.positionSharesBefore =
+                transaction.positionSharesBefore();
+        this.positionCostBefore =
+                transaction.positionCostBefore();
+        this.positionStatusBefore =
+                transaction.positionStatusBefore();
+        this.positionHoldingStartDateBefore =
+                transaction.positionHoldingStartDateBefore();
         this.submittedDate = transaction.submittedDate();
         this.submittedPeriod = transaction.submittedPeriod();
         this.effectiveTradeDate = transaction.effectiveTradeDate();
@@ -162,12 +190,39 @@ class FundTransactionJpaEntity {
         this.feeSource = transaction.feeSource();
         this.pendingReason = transaction.pendingReason();
         this.note = transaction.note();
+        this.cancellationReason =
+                transaction.cancellationReason();
+        this.cancelledAt = transaction.cancelledAt();
         this.createdAt = transaction.createdAt();
         this.updatedAt = transaction.updatedAt();
     }
 
     static FundTransactionJpaEntity fromDomain(FundTransaction transaction) {
         return new FundTransactionJpaEntity(transaction);
+    }
+
+    void apply(FundTransaction transaction) {
+        if (!id.equals(transaction.id())
+                || !publicId.equals(transaction.publicId())
+                || userId != transaction.userId()) {
+            throw new IllegalArgumentException(
+                    "Transaction identity cannot be changed");
+        }
+        this.status = transaction.status();
+        this.grossAmount = transaction.grossAmount();
+        this.netAmount = transaction.netAmount();
+        this.expectedAmount = transaction.expectedAmount();
+        this.actualReceivedAmount =
+                transaction.actualReceivedAmount();
+        this.removedCost = transaction.removedCost();
+        this.realizedProfit = transaction.realizedProfit();
+        this.shares = transaction.shares();
+        this.confirmedDate = transaction.confirmedDate();
+        this.pendingReason = transaction.pendingReason();
+        this.cancellationReason =
+                transaction.cancellationReason();
+        this.cancelledAt = transaction.cancelledAt();
+        this.updatedAt = transaction.updatedAt();
     }
 
     FundTransaction toDomain() {
@@ -190,6 +245,10 @@ class FundTransactionJpaEntity {
                 removedCost,
                 realizedProfit,
                 shares,
+                positionSharesBefore,
+                positionCostBefore,
+                positionStatusBefore,
+                positionHoldingStartDateBefore,
                 submittedDate,
                 submittedPeriod,
                 effectiveTradeDate,
@@ -201,6 +260,8 @@ class FundTransactionJpaEntity {
                 feeSource,
                 pendingReason,
                 note,
+                cancellationReason,
+                cancelledAt,
                 createdAt,
                 updatedAt);
     }

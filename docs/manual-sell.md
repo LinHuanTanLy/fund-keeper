@@ -59,5 +59,41 @@ Content-Type: application/json
 - 同一账户、同一基金最多存在一笔 `PENDING` 或 `ESTIMATED` 卖出；
 - 卖出有效交易日必须晚于最近一次生效快照。
 
-当前阶段尚未提供对未决卖出的补充确认、取消和校准接口。需要立即完成清仓记录
-时，应在取得平台实际到账金额后录入；后续阶段会补充状态维护和历史重算能力。
+## 4. 补充确认
+
+```http
+POST /api/v1/transactions/{transactionId}/sell-confirmation
+```
+
+```json
+{
+  "actualReceivedAmount": 1980.00,
+  "confirmedShares": 1650.12345678,
+  "confirmedDate": "2026-07-27"
+}
+```
+
+`actualReceivedAmount` 必填。部分卖出还必须填写平台确认份额，不能只凭预计金额
+把交易标记为确认；全部卖出可省略份额，服务端使用卖出前的全部持仓份额。确认时
+服务端先还原卖出前基线，再根据最终份额重新计算移出成本、剩余持仓和已实现收益。
+相同结果重复提交会幂等返回，不能用该接口覆盖已经确认的结果。
+
+## 5. 撤销未成交卖出
+
+```http
+POST /api/v1/transactions/{transactionId}/cancel
+```
+
+```json
+{
+  "reason": "平台最终未成交"
+}
+```
+
+只有 `PENDING` 或 `ESTIMATED` 卖出可以撤销。撤销预估部分卖出会恢复卖出前
+份额、成本、确认状态和持有开始日期；交易记录保留为 `CANCELLED`，并记录原因
+与时间。`CONFIRMED` 交易不能撤销，后续应通过独立更正流程处理。
+
+未决卖出处理完成前，同账户同基金不能继续买入，账户也不能覆盖持仓快照。若持仓
+已被外部修改，确认或撤销会返回 `SELL_STATE_CONFLICT`，避免用猜测数据回滚。
+V7 之前创建且缺少卖出前快照的历史未决记录同样需要人工校准。

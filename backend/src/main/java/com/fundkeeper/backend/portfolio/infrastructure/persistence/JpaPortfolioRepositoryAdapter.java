@@ -41,6 +41,16 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
     }
 
     @Override
+    public Optional<FundTransaction>
+            findTransactionByPublicIdAndUserIdForUpdate(
+                    String publicId,
+                    long userId) {
+        return transactionRepository
+                .findForUpdateByPublicIdAndUserId(publicId, userId)
+                .map(FundTransactionJpaEntity::toDomain);
+    }
+
+    @Override
     public Optional<FundPosition> findPositionByAccountIdAndFundId(
             long accountId,
             long fundId) {
@@ -58,6 +68,20 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
                         userId,
                         accountId,
                         fundId,
+                        TransactionType.SELL,
+                        List.of(
+                                TransactionStatus.PENDING,
+                                TransactionStatus.ESTIMATED));
+    }
+
+    @Override
+    public boolean existsOpenSell(
+            long userId,
+            long accountId) {
+        return transactionRepository
+                .existsByUserIdAndAccountIdAndTypeAndStatusIn(
+                        userId,
+                        accountId,
                         TransactionType.SELL,
                         List.of(
                                 TransactionStatus.PENDING,
@@ -94,6 +118,21 @@ public class JpaPortfolioRepositoryAdapter implements PortfolioRepository {
         return transactionRepository
                 .saveAndFlush(FundTransactionJpaEntity.fromDomain(transaction))
                 .toDomain();
+    }
+
+    @Override
+    public FundTransaction updateTransaction(
+            FundTransaction transaction) {
+        if (transaction.id() == null) {
+            throw new IllegalArgumentException(
+                    "A persisted transaction is required");
+        }
+        FundTransactionJpaEntity entity = transactionRepository
+                .findById(transaction.id())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Fund transaction no longer exists"));
+        entity.apply(transaction);
+        return transactionRepository.saveAndFlush(entity).toDomain();
     }
 
     @Override

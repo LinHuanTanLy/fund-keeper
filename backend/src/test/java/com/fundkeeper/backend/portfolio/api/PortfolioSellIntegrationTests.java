@@ -1,6 +1,7 @@
 package com.fundkeeper.backend.portfolio.api;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -480,6 +481,410 @@ class PortfolioSellIntegrationTests {
                                 "SELECT shares FROM fund_positions",
                                 BigDecimal.class))
                 .isEqualByComparingTo("500.00000000");
+    }
+
+    @Test
+    void estimatedPartialSellCanBeConfirmedAndRecalculated()
+            throws Exception {
+        Session session = preparedPosition();
+        MvcResult created = sell(
+                session.token(),
+                sellBody(
+                        "sell-confirm-later-001",
+                        session.accountId(),
+                        "PARTIAL",
+                        "400.00",
+                        null,
+                        null,
+                        null))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String transactionId = JsonPath.read(
+                created.getResponse().getContentAsString(),
+                "$.data.id");
+        String confirmation = """
+                {
+                  "actualReceivedAmount": 370.00,
+                  "confirmedShares": 180.00000000,
+                  "confirmedDate": "2026-07-24"
+                }
+                """;
+
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{transactionId}/sell-confirmation",
+                                transactionId)
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(confirmation))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("CONFIRMED")))
+                .andExpect(jsonPath(
+                        "$.data.expectedAmount",
+                        is(400.0)))
+                .andExpect(jsonPath(
+                        "$.data.actualReceivedAmount",
+                        is(370.0)))
+                .andExpect(jsonPath(
+                        "$.data.shares",
+                        is(180.0)))
+                .andExpect(jsonPath(
+                        "$.data.removedCost",
+                        is(360.0)))
+                .andExpect(jsonPath(
+                        "$.data.realizedProfit",
+                        is(10.0)));
+
+        mockMvc.perform(get("/api/v1/positions")
+                        .header(
+                                "Authorization",
+                                bearer(session.token())))
+                .andExpect(jsonPath(
+                        "$.data[0].shares",
+                        is(320.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].remainingCost",
+                        is(640.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].status",
+                        is("CONFIRMED")));
+
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{transactionId}/sell-confirmation",
+                                transactionId)
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(confirmation))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.realizedProfit",
+                        is(10.0)));
+
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{transactionId}/sell-confirmation",
+                                transactionId)
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "actualReceivedAmount": 371.00,
+                                  "confirmedShares": 180.00000000,
+                                  "confirmedDate": "2026-07-24"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("SELL_STATE_CONFLICT")));
+    }
+
+    @Test
+    void estimatedPartialSellCanBeCancelledAndRestoresPosition()
+            throws Exception {
+        Session session = preparedPosition();
+        MvcResult created = sell(
+                session.token(),
+                sellBody(
+                        "sell-cancel-001",
+                        session.accountId(),
+                        "PARTIAL",
+                        "400.00",
+                        null,
+                        null,
+                        null))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String transactionId = JsonPath.read(
+                created.getResponse().getContentAsString(),
+                "$.data.id");
+
+        mockMvc.perform(post("/api/v1/transactions/buys")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "requestId": "buy-blocked-by-sell-001",
+                                  "accountId": "%s",
+                                  "fundCode": "000001",
+                                  "amount": 100.00,
+                                  "submittedDate": "2026-07-24",
+                                  "submittedPeriod": "BEFORE_15",
+                                  "confirmedShares": 50.00000000,
+                                  "confirmedDate": "2026-07-24"
+                                }
+                                """.formatted(session.accountId())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("SELL_ALREADY_OPEN")));
+
+        String cancellation = """
+                {
+                  "reason": "平台最终未成交"
+                }
+                """;
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{transactionId}/cancel",
+                                transactionId)
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(cancellation))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("CANCELLED")))
+                .andExpect(jsonPath(
+                        "$.data.cancellationReason",
+                        is("平台最终未成交")))
+                .andExpect(jsonPath(
+                        "$.data.cancelledAt").exists());
+
+        mockMvc.perform(get("/api/v1/positions")
+                        .header(
+                                "Authorization",
+                                bearer(session.token())))
+                .andExpect(jsonPath(
+                        "$.data[0].shares",
+                        is(500.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].remainingCost",
+                        is(1000.0)))
+                .andExpect(jsonPath(
+                        "$.data[0].status",
+                        is("CONFIRMED")));
+
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{transactionId}/cancel",
+                                transactionId)
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(cancellation))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("CANCELLED")));
+    }
+
+    @Test
+    void pendingFullSellCanBeConfirmedAndClearsPosition()
+            throws Exception {
+        Session session = preparedPosition();
+        MvcResult created = sell(
+                session.token(),
+                sellBody(
+                        "sell-pending-confirm-001",
+                        session.accountId(),
+                        "FULL",
+                        "1050.00",
+                        null,
+                        null,
+                        null))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String transactionId = JsonPath.read(
+                created.getResponse().getContentAsString(),
+                "$.data.id");
+
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{transactionId}/sell-confirmation",
+                                transactionId)
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "actualReceivedAmount": 1080.00,
+                                  "confirmedDate": "2026-07-24"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("CONFIRMED")))
+                .andExpect(jsonPath(
+                        "$.data.shares",
+                        is(500.0)))
+                .andExpect(jsonPath(
+                        "$.data.removedCost",
+                        is(1000.0)))
+                .andExpect(jsonPath(
+                        "$.data.realizedProfit",
+                        is(80.0)));
+
+        mockMvc.perform(get("/api/v1/positions")
+                        .header(
+                                "Authorization",
+                                bearer(session.token())))
+                .andExpect(jsonPath("$.data", hasSize(0)));
+    }
+
+    @Test
+    void partialConfirmationRequiresSharesAndRejectsChangedState()
+            throws Exception {
+        Session session = preparedPosition();
+        MvcResult created = sell(
+                session.token(),
+                sellBody(
+                        "sell-state-check-001",
+                        session.accountId(),
+                        "PARTIAL",
+                        "400.00",
+                        null,
+                        null,
+                        null))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String transactionId = JsonPath.read(
+                created.getResponse().getContentAsString(),
+                "$.data.id");
+
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{transactionId}/sell-confirmation",
+                                transactionId)
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "actualReceivedAmount": 390.00,
+                                  "confirmedDate": "2026-07-24"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("INVALID_REQUEST")));
+
+        jdbcTemplate.update(
+                """
+                UPDATE fund_positions
+                   SET shares = 301.00000000,
+                       average_unit_cost =
+                           remaining_cost / 301.00000000
+                """);
+        mockMvc.perform(post(
+                                "/api/v1/transactions/{transactionId}/cancel",
+                                transactionId)
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath(
+                        "$.code",
+                        is("SELL_STATE_CONFLICT")));
+        org.assertj.core.api.Assertions.assertThat(
+                        jdbcTemplate.queryForObject(
+                                """
+                                SELECT status
+                                  FROM fund_transactions
+                                 WHERE public_id = ?
+                                """,
+                                String.class,
+                                transactionId))
+                .isEqualTo("ESTIMATED");
+    }
+
+    @Test
+    void openSellBlocksSnapshotAndBatchBuyPreflight()
+            throws Exception {
+        Session session = preparedPosition();
+        sell(
+                session.token(),
+                sellBody(
+                        "sell-block-imports-001",
+                        session.accountId(),
+                        "PARTIAL",
+                        "400.00",
+                        null,
+                        null,
+                        null))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post(
+                                "/api/v1/imports/position-snapshots/preflight")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "schemaVersion": "1.0",
+                                  "importType": "POSITION_SNAPSHOT",
+                                  "batchId": "snapshot-open-sell-001",
+                                  "snapshotMode": "PARTIAL",
+                                  "account": {
+                                    "name": "默认账户",
+                                    "platform": "OTHER"
+                                  },
+                                  "snapshotAt": "2026-07-25T14:00:00+08:00",
+                                  "positions": [{
+                                    "fundCode": "000001",
+                                    "costAmount": 1000.00,
+                                    "currentAmount": 1000.00,
+                                    "holdingStartDate": "2026-07-24",
+                                    "confirmedShares": 500.00000000
+                                  }]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("PREFLIGHT_FAILED")))
+                .andExpect(jsonPath(
+                        "$.data.issues[*].code",
+                        hasItem("OPEN_SELL_CONFLICT")));
+
+        mockMvc.perform(post(
+                                "/api/v1/imports/transaction-batches/preflight")
+                        .header(
+                                "Authorization",
+                                bearer(session.token()))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "schemaVersion": "1.0",
+                                  "importType": "TRANSACTION_BATCH",
+                                  "batchId": "batch-open-sell-001",
+                                  "account": {
+                                    "name": "默认账户",
+                                    "platform": "OTHER"
+                                  },
+                                  "transactions": [{
+                                    "rowId": "row-001",
+                                    "fundCode": "000001",
+                                    "type": "BUY",
+                                    "amount": 100.00,
+                                    "submittedDate": "2026-07-24",
+                                    "submittedPeriod": "BEFORE_15",
+                                    "confirmedShares": 50.00000000,
+                                    "confirmedDate": "2026-07-24"
+                                  }]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.data.status",
+                        is("PREFLIGHT_FAILED")))
+                .andExpect(jsonPath(
+                        "$.data.issues[*].code",
+                        hasItem("OPEN_SELL_CONFLICT")));
     }
 
     private Session preparedPosition() throws Exception {

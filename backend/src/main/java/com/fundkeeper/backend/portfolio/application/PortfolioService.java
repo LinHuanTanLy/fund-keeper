@@ -84,6 +84,14 @@ public class PortfolioService {
                 command.accountPublicId());
         BuyTransactionPlan plan =
                 buyPlanner.planNormalized(command);
+        if (portfolioRepository.existsOpenSell(
+                user.id(),
+                account.id(),
+                plan.fund().id())) {
+            throw new BusinessException(
+                    ErrorCode.SELL_ALREADY_OPEN,
+                    "该基金存在待确认或待校准卖出，处理完成前不能继续买入");
+        }
         validateSnapshotBoundary(
                 user.id(),
                 account.id(),

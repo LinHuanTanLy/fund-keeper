@@ -152,6 +152,20 @@ public record FundPosition(
                 now);
     }
 
+    public FundPosition restoreSellSnapshot(
+            BigDecimal snapshotShares,
+            BigDecimal snapshotCost,
+            PositionStatus snapshotStatus,
+            LocalDate snapshotHoldingStartDate,
+            Instant now) {
+        return applySnapshot(
+                snapshotShares,
+                snapshotCost,
+                snapshotStatus,
+                snapshotHoldingStartDate,
+                now);
+    }
+
     public PositionSaleImpact saleImpact(
             BigDecimal rawSoldShares,
             BigDecimal proceeds) {

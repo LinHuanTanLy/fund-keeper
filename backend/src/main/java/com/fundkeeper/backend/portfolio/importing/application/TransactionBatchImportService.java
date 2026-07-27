@@ -31,6 +31,7 @@ import com.fundkeeper.backend.portfolio.application.BuyTransactionOutcome;
 import com.fundkeeper.backend.portfolio.application.BuyTransactionPlan;
 import com.fundkeeper.backend.portfolio.application.BuyTransactionPlanner;
 import com.fundkeeper.backend.portfolio.application.PortfolioService;
+import com.fundkeeper.backend.portfolio.domain.PortfolioRepository;
 import com.fundkeeper.backend.portfolio.domain.SnapshotBoundaryRepository;
 import com.fundkeeper.backend.portfolio.domain.SubmittedPeriod;
 import com.fundkeeper.backend.portfolio.importing.application.TransactionBatchDocument.TransactionRowDocument;
@@ -56,6 +57,7 @@ public class TransactionBatchImportService {
     private final FundAccountRepository accountRepository;
     private final AccountNameNormalizer accountNameNormalizer;
     private final SnapshotBoundaryRepository boundaryRepository;
+    private final PortfolioRepository portfolioRepository;
     private final ImportBatchRepository batchRepository;
     private final BuyTransactionPlanner buyPlanner;
     private final PortfolioService portfolioService;
@@ -69,6 +71,7 @@ public class TransactionBatchImportService {
             FundAccountRepository accountRepository,
             AccountNameNormalizer accountNameNormalizer,
             SnapshotBoundaryRepository boundaryRepository,
+            PortfolioRepository portfolioRepository,
             ImportBatchRepository batchRepository,
             BuyTransactionPlanner buyPlanner,
             PortfolioService portfolioService,
@@ -80,6 +83,7 @@ public class TransactionBatchImportService {
         this.accountRepository = accountRepository;
         this.accountNameNormalizer = accountNameNormalizer;
         this.boundaryRepository = boundaryRepository;
+        this.portfolioRepository = portfolioRepository;
         this.batchRepository = batchRepository;
         this.buyPlanner = buyPlanner;
         this.portfolioService = portfolioService;
@@ -334,6 +338,17 @@ public class TransactionBatchImportService {
                                             document.batchId(),
                                             source));
                     plan = buyPlanner.planNormalized(normalized);
+                    if (account.existing() != null
+                            && portfolioRepository.existsOpenSell(
+                                    user.id(),
+                                    account.existing().id(),
+                                    plan.fund().id())) {
+                        rowIssues.add(ImportIssue.error(
+                                row,
+                                field(index, "fundCode"),
+                                "OPEN_SELL_CONFLICT",
+                                "该基金存在待确认或待校准卖出，处理完成前不能继续买入"));
+                    }
                     validateSnapshotBoundary(
                             user.id(),
                             account.existing(),

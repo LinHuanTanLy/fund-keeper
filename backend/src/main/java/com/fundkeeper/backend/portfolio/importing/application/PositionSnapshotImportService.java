@@ -559,6 +559,15 @@ public class PositionSnapshotImportService {
         AccountMatch account = matchAccount(user.id(), document, issues);
         LocalDate snapshotDate = document.snapshotAt().toLocalDate();
         if (account.existing() != null) {
+            if (portfolioRepository.existsOpenSell(
+                    user.id(),
+                    account.existing().id())) {
+                issues.add(ImportIssue.error(
+                        null,
+                        "account",
+                        "OPEN_SELL_CONFLICT",
+                        "账户存在待确认或待校准卖出，处理完成前不能覆盖持仓快照"));
+            }
             boundaryRepository.findLatestCommittedSnapshotAt(
                             user.id(),
                             account.existing().id())

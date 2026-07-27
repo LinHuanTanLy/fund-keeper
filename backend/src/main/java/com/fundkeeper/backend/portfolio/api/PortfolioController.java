@@ -54,6 +54,30 @@ public class PortfolioController {
                         .body(response);
     }
 
+    @PostMapping("/transactions/{transactionId}/sell-confirmation")
+    ApiResponse<TransactionView> confirmSell(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable String transactionId,
+            @Valid @RequestBody SellConfirmationRequest request) {
+        return ApiResponse.success(TransactionView.from(
+                sellTransactionService.confirm(
+                        jwt.getSubject(),
+                        transactionId,
+                        request.toCommand())));
+    }
+
+    @PostMapping("/transactions/{transactionId}/cancel")
+    ApiResponse<TransactionView> cancelSell(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable String transactionId,
+            @Valid @RequestBody SellCancellationRequest request) {
+        return ApiResponse.success(TransactionView.from(
+                sellTransactionService.cancel(
+                        jwt.getSubject(),
+                        transactionId,
+                        request.toCommand())));
+    }
+
     @PostMapping("/transactions/buys")
     ResponseEntity<ApiResponse<TransactionView>> buy(
             @AuthenticationPrincipal Jwt jwt,

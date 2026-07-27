@@ -13,6 +13,10 @@ public interface PortfolioRepository {
             String publicId,
             long userId);
 
+    Optional<FundTransaction> findTransactionByPublicIdAndUserIdForUpdate(
+            String publicId,
+            long userId);
+
     Optional<FundPosition> findPositionByAccountIdAndFundId(
             long accountId,
             long fundId);
@@ -22,6 +26,10 @@ public interface PortfolioRepository {
             long accountId,
             long fundId);
 
+    boolean existsOpenSell(
+            long userId,
+            long accountId);
+
     List<FundPosition> findPositionsByUserId(long userId);
 
     List<FundPosition> findPositionsByUserIdAndAccountId(
@@ -29,6 +37,8 @@ public interface PortfolioRepository {
             long accountId);
 
     FundTransaction saveTransaction(FundTransaction transaction);
+
+    FundTransaction updateTransaction(FundTransaction transaction);
 
     FundPosition savePosition(FundPosition position);
 
