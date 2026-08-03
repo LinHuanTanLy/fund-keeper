@@ -20,6 +20,8 @@ public interface FundReferenceDataStore {
 
     List<String> findActiveFundCodes();
 
+    List<String> findActiveExchangeTradedFundCodes();
+
     int upsertNavs(
             String provider,
             String sourceLabel,

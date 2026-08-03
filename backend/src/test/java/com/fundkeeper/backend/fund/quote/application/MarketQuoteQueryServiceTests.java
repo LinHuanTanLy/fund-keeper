@@ -1,4 +1,4 @@
-package com.fundkeeper.backend.fund.valuation.application;
+package com.fundkeeper.backend.fund.quote.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -16,78 +16,69 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 import com.fundkeeper.backend.fund.domain.FundDataRepository;
-import com.fundkeeper.backend.fund.valuation.domain.IntradayValuation;
+import com.fundkeeper.backend.fund.quote.domain.MarketQuote;
+import com.fundkeeper.backend.fund.quote.infrastructure.InMemoryMarketQuoteCache;
+import com.fundkeeper.backend.fund.valuation.application.MarketSessionService;
+import com.fundkeeper.backend.fund.valuation.application.ValuationProperties;
 import com.fundkeeper.backend.fund.valuation.domain.ValuationStatus;
-import com.fundkeeper.backend.fund.valuation.infrastructure.InMemoryIntradayValuationCache;
 
-class ValuationQueryServiceTests {
+class MarketQuoteQueryServiceTests {
 
     private static final ZoneId CHINA =
             ZoneId.of("Asia/Shanghai");
     private static final LocalDate TODAY =
-            LocalDate.of(2026, 7, 24);
+            LocalDate.of(2026, 7, 28);
 
     @Test
-    void freshSameDayValueIsLiveDuringTradingSession() {
-        Clock clock = clockAt("2026-07-24T02:00:00Z");
-        ValuationQueryService service = service(
+    void freshQuoteIsLiveDuringTradingSession() {
+        Clock clock = clockAt("2026-07-28T02:00:00Z");
+        assertThat(service(
                 clock,
-                Instant.parse("2026-07-24T01:59:00Z"));
-
-        assertThat(service.quote("005827").status())
+                Instant.parse("2026-07-28T01:59:00Z"),
+                true).quote("510300").status())
                 .isEqualTo(ValuationStatus.LIVE);
     }
 
     @Test
-    void oldFetchIsStaleEvenWhenValuationDateIsToday() {
-        Clock clock = clockAt("2026-07-24T02:05:00Z");
-        ValuationQueryService service = service(
+    void cachedClosingQuoteRemainsUsableAfterMarketClose() {
+        Clock clock = clockAt("2026-07-28T08:00:00Z");
+        var result = service(
                 clock,
-                Instant.parse("2026-07-24T02:00:00Z"));
+                Instant.parse("2026-07-28T07:00:00Z"),
+                true).quote("510300");
 
-        assertThat(service.quote("005827").status())
-                .isEqualTo(ValuationStatus.STALE);
+        assertThat(result.status())
+                .isEqualTo(ValuationStatus.MARKET_CLOSED);
+        assertThat(result.quote()).isPresent();
     }
 
-    @Test
-    void fetchOlderThanNinetySecondsIsDelayed() {
-        Clock clock = clockAt("2026-07-24T02:02:00Z");
-        ValuationQueryService service = service(
-                clock,
-                Instant.parse("2026-07-24T02:00:00Z"));
-
-        assertThat(service.quote("005827").status())
-                .isEqualTo(ValuationStatus.DELAYED);
-    }
-
-    private ValuationQueryService service(
+    private MarketQuoteQueryService service(
             Clock clock,
-            Instant fetchedAt) {
+            Instant observedAt,
+            boolean tradingDay) {
         FundDataRepository repository =
                 mock(FundDataRepository.class);
         when(repository.findTradingDayOpenFlag(TODAY))
-                .thenReturn(Optional.of(true));
+                .thenReturn(Optional.of(tradingDay));
         ValuationProperties properties = properties();
-        var cache = new InMemoryIntradayValuationCache(clock);
+        var cache = new InMemoryMarketQuoteCache(clock);
         cache.put(
-                new IntradayValuation(
-                        "005827",
+                new MarketQuote(
+                        "510300",
                         TODAY,
-                        new BigDecimal("1.4918"),
-                        new BigDecimal("-1.39"),
-                        LocalDate.of(2026, 7, 23),
-                        new BigDecimal("1.5128"),
-                        fetchedAt,
+                        new BigDecimal("4.627"),
+                        new BigDecimal("4.753"),
+                        new BigDecimal("-2.65"),
+                        observedAt,
+                        clock.instant(),
                         "test"),
-                Duration.ofMinutes(30));
-        MarketSessionService marketSessionService =
+                Duration.ofHours(24));
+        return new MarketQuoteQueryService(
+                cache,
                 new MarketSessionService(
                         repository,
                         clock,
-                        properties);
-        return new ValuationQueryService(
-                cache,
-                marketSessionService,
+                        properties),
                 properties,
                 clock);
     }
@@ -101,7 +92,7 @@ class ValuationQueryServiceTests {
                 List.of(),
                 Duration.ofSeconds(90),
                 Duration.ofMinutes(3),
-                Duration.ofMinutes(30),
+                Duration.ofHours(24),
                 Duration.ofHours(24),
                 Duration.ZERO,
                 Duration.ofSeconds(2),

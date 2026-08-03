@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 
+import com.fundkeeper.backend.fund.domain.FundPrimaryTheme;
 import com.fundkeeper.backend.fund.valuation.domain.ValuationStatus;
 import com.fundkeeper.backend.portfolio.application.FundPortfolioCardDetails;
 import com.fundkeeper.backend.portfolio.application.ValuationPriceType;
@@ -11,6 +12,7 @@ import com.fundkeeper.backend.portfolio.application.ValuationPriceType;
 public record FundPortfolioCardView(
         String fundCode,
         String fundName,
+        FundPrimaryTheme primaryTheme,
         boolean hasCurrentPosition,
         int accountCount,
         BigDecimal totalShares,
@@ -40,6 +42,7 @@ public record FundPortfolioCardView(
         return new FundPortfolioCardView(
                 details.fund().code(),
                 details.fund().name(),
+                details.primaryTheme(),
                 details.hasCurrentPosition(),
                 details.accountCount(),
                 details.totalShares(),

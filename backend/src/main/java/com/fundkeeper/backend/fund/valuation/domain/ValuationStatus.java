@@ -4,6 +4,7 @@ public enum ValuationStatus {
     LIVE,
     DELAYED,
     STALE,
+    OFFICIAL,
     MARKET_CLOSED,
     UNAVAILABLE
 }

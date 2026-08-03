@@ -17,6 +17,7 @@ import com.fundkeeper.backend.fund.domain.FeeCalculationMethod;
 import com.fundkeeper.backend.fund.domain.FundCategory;
 import com.fundkeeper.backend.fund.domain.FundDataRepository;
 import com.fundkeeper.backend.fund.domain.FundDefinition;
+import com.fundkeeper.backend.fund.domain.FundTradingMode;
 import com.fundkeeper.backend.fund.domain.OfficialNav;
 import com.fundkeeper.backend.fund.domain.PurchaseFeeRule;
 
@@ -24,7 +25,7 @@ import com.fundkeeper.backend.fund.domain.PurchaseFeeRule;
 public class JdbcFundDataRepository implements FundDataRepository {
 
     private static final String FUND_COLUMNS = """
-            SELECT id, code, name, category, currency, supported,
+            SELECT id, code, name, category, trading_mode, currency, supported,
                    confirmation_delay_trading_days, data_source,
                    created_at, updated_at
               FROM funds
@@ -175,6 +176,8 @@ public class JdbcFundDataRepository implements FundDataRepository {
                 resultSet.getString("code"),
                 resultSet.getString("name"),
                 FundCategory.valueOf(resultSet.getString("category")),
+                FundTradingMode.valueOf(
+                        resultSet.getString("trading_mode")),
                 resultSet.getString("currency"),
                 resultSet.getBoolean("supported"),
                 (Integer) resultSet.getObject(

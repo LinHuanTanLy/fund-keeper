@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 
 import com.fundkeeper.backend.fund.domain.FundCategory;
+import com.fundkeeper.backend.fund.domain.FundTradingMode;
 import com.fundkeeper.backend.fund.reference.application.ReferenceDataProperties;
 
 import tools.jackson.databind.ObjectMapper;
@@ -71,7 +72,21 @@ class EastmoneyPublicReferenceDataProviderTests {
                 .containsExactly(
                         tuple("005827", FundCategory.MIXED),
                         tuple("100001", FundCategory.STOCK),
-                        tuple("200001", FundCategory.INDEX));
+                        tuple("200001", FundCategory.INDEX),
+                        tuple("510300", FundCategory.INDEX),
+                        tuple("159915", FundCategory.INDEX),
+                        tuple("012345", FundCategory.INDEX));
+        assertThat(funds)
+                .filteredOn(fund ->
+                        fund.code().equals("510300")
+                                || fund.code().equals("159915"))
+                .allSatisfy(fund -> assertThat(fund.tradingMode())
+                        .isEqualTo(FundTradingMode.EXCHANGE_TRADED));
+        assertThat(funds)
+                .filteredOn(fund -> fund.code().equals("012345"))
+                .singleElement()
+                .satisfies(fund -> assertThat(fund.tradingMode())
+                        .isEqualTo(FundTradingMode.OFF_EXCHANGE));
         assertThat(funds)
                 .allSatisfy(fund -> {
                     assertThat(fund.providerCode()).isEqualTo(fund.code());
@@ -136,6 +151,9 @@ class EastmoneyPublicReferenceDataProviderTests {
                       ["005827", "YFDLCJXHH", "易方达蓝筹精选混合", "混合型-偏股", "PINYIN"],
                       ["100001", "GPG", "测试股票", "股票型", "PINYIN"],
                       ["200001", "ZS", "测试指数", "指数型-股票", "PINYIN"],
+                      ["510300", "HS300ETF", "沪深300ETF华泰柏瑞", "指数型-股票", "PINYIN"],
+                      ["159915", "CYBETF", "创业板ETF易方达", "指数型-股票", "PINYIN"],
+                      ["012345", "ETFJJ", "测试ETF联接A", "指数型-股票", "PINYIN"],
                       ["300001", "GSHZS", "固收指数", "指数型-固收", "PINYIN"],
                       ["400001", "HWZS", "海外指数", "指数型-海外股票", "PINYIN"],
                       ["500001", "ZQ", "测试债券", "债券型-长债", "PINYIN"],

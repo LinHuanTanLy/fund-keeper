@@ -21,6 +21,7 @@ import com.fundkeeper.backend.account.domain.FundAccount;
 import com.fundkeeper.backend.account.domain.FundAccountRepository;
 import com.fundkeeper.backend.auth.domain.User;
 import com.fundkeeper.backend.auth.domain.UserRepository;
+import com.fundkeeper.backend.fund.application.FundPrimaryThemeClassifier;
 import com.fundkeeper.backend.fund.domain.FundDataRepository;
 import com.fundkeeper.backend.fund.domain.FundDefinition;
 import com.fundkeeper.backend.fund.valuation.domain.ValuationStatus;
@@ -43,6 +44,7 @@ public class PortfolioOverviewService {
     private final FundDataRepository fundDataRepository;
     private final PortfolioRepository portfolioRepository;
     private final PositionValuationService positionValuationService;
+    private final FundPrimaryThemeClassifier themeClassifier;
     private final Clock clock;
 
     public PortfolioOverviewService(
@@ -51,12 +53,14 @@ public class PortfolioOverviewService {
             FundDataRepository fundDataRepository,
             PortfolioRepository portfolioRepository,
             PositionValuationService positionValuationService,
+            FundPrimaryThemeClassifier themeClassifier,
             Clock clock) {
         this.userRepository = userRepository;
         this.accountRepository = accountRepository;
         this.fundDataRepository = fundDataRepository;
         this.portfolioRepository = portfolioRepository;
         this.positionValuationService = positionValuationService;
+        this.themeClassifier = themeClassifier;
         this.clock = clock;
     }
 
@@ -336,6 +340,7 @@ public class PortfolioOverviewService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
         return new FundPortfolioCardDetails(
                 fund,
+                themeClassifier.classify(fund),
                 hasCurrentPosition,
                 accountIds.size(),
                 totalShares,
@@ -479,6 +484,7 @@ public class PortfolioOverviewService {
     private int statusPriority(ValuationStatus status) {
         return switch (status) {
             case LIVE -> 1;
+            case OFFICIAL -> 1;
             case MARKET_CLOSED -> 2;
             case DELAYED -> 3;
             case STALE -> 4;
@@ -493,7 +499,12 @@ public class PortfolioOverviewService {
                 .filter(java.util.Objects::nonNull)
                 .distinct()
                 .toList();
-        return types.size() == 1 ? types.getFirst() : null;
+        if (types.isEmpty()) {
+            return null;
+        }
+        return types.size() == 1
+                ? types.getFirst()
+                : ValuationPriceType.MIXED;
     }
 
     private LocalDate oldestDataDate(

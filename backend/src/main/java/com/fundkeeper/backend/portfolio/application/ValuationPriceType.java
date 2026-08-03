@@ -1,6 +1,8 @@
 package com.fundkeeper.backend.portfolio.application;
 
 public enum ValuationPriceType {
+    MARKET,
     ESTIMATED,
-    OFFICIAL
+    OFFICIAL,
+    MIXED
 }

@@ -121,6 +121,31 @@ public class JdbcFundReferenceDataStore implements FundReferenceDataStore {
     }
 
     @Override
+    public List<String> findActiveExchangeTradedFundCodes() {
+        return jdbcTemplate.queryForList(
+                """
+                SELECT DISTINCT fund.code
+                  FROM funds fund
+                 WHERE fund.trading_mode = 'EXCHANGE_TRADED'
+                   AND (
+                       EXISTS (
+                           SELECT 1
+                             FROM fund_positions position
+                            WHERE position.fund_id = fund.id
+                       )
+                       OR EXISTS (
+                           SELECT 1
+                             FROM fund_transactions transaction_record
+                            WHERE transaction_record.fund_id = fund.id
+                              AND transaction_record.status = 'PENDING'
+                       )
+                   )
+                 ORDER BY fund.code
+                """,
+                String.class);
+    }
+
+    @Override
     @Transactional
     public int upsertNavs(
             String provider,
@@ -172,6 +197,7 @@ public class JdbcFundReferenceDataStore implements FundReferenceDataStore {
                 UPDATE funds
                    SET name = ?,
                        category = ?,
+                       trading_mode = ?,
                        currency = ?,
                        supported = ?,
                        confirmation_delay_trading_days = ?,
@@ -181,6 +207,7 @@ public class JdbcFundReferenceDataStore implements FundReferenceDataStore {
                 """,
                 fund.name(),
                 fund.category().name(),
+                fund.tradingMode().name(),
                 fund.currency(),
                 fund.supported(),
                 fund.confirmationDelayTradingDays(),
@@ -192,14 +219,16 @@ public class JdbcFundReferenceDataStore implements FundReferenceDataStore {
                 jdbcTemplate.update(
                         """
                         INSERT INTO funds
-                            (code, name, category, currency, supported,
+                            (code, name, category, trading_mode, currency,
+                             supported,
                              confirmation_delay_trading_days, data_source,
                              created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         fund.code(),
                         fund.name(),
                         fund.category().name(),
+                        fund.tradingMode().name(),
                         fund.currency(),
                         fund.supported(),
                         fund.confirmationDelayTradingDays(),

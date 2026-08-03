@@ -27,6 +27,8 @@ import com.fundkeeper.backend.auth.domain.UserStatus;
 import com.fundkeeper.backend.fund.domain.FundCategory;
 import com.fundkeeper.backend.fund.domain.FundDataRepository;
 import com.fundkeeper.backend.fund.domain.FundDefinition;
+import com.fundkeeper.backend.fund.application.FundPrimaryThemeClassifier;
+import com.fundkeeper.backend.fund.domain.FundPrimaryTheme;
 import com.fundkeeper.backend.fund.valuation.domain.ValuationStatus;
 import com.fundkeeper.backend.portfolio.domain.FundPosition;
 import com.fundkeeper.backend.portfolio.domain.PortfolioRepository;
@@ -63,6 +65,7 @@ class PortfolioOverviewServiceTests {
                 fundDataRepository,
                 portfolioRepository,
                 valuationService,
+                new FundPrimaryThemeClassifier(),
                 CLOCK);
         user = new User(
                 1L,
@@ -269,6 +272,8 @@ class PortfolioOverviewServiceTests {
         assertThat(cards).hasSize(2);
         FundPortfolioCardDetails aggregated = cards.getFirst();
         assertThat(aggregated.fund().code()).isEqualTo("000001");
+        assertThat(aggregated.primaryTheme())
+                .isEqualTo(FundPrimaryTheme.MIXED);
         assertThat(aggregated.accountCount()).isEqualTo(2);
         assertThat(aggregated.totalShares())
                 .isEqualByComparingTo("450.00000000");

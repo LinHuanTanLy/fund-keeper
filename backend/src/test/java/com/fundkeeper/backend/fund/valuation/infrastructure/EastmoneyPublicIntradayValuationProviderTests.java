@@ -65,6 +65,7 @@ class EastmoneyPublicIntradayValuationProviderTests {
                 30_000,
                 10,
                 baseUrl,
+                baseUrl,
                 baseUrl + "/referer",
                 "Asia/Shanghai",
                 "memory",

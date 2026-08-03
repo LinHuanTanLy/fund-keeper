@@ -25,6 +25,7 @@ public record ValuationProperties(
         int fullPageSize,
         int maxPagesPerRefresh,
         String eastmoneyApiBaseUrl,
+        String eastmoneyQuoteBaseUrl,
         String eastmoneyReferer,
         String zone,
         String cacheStore,
@@ -32,10 +33,11 @@ public record ValuationProperties(
 
     public ValuationProperties {
         if (!"none".equals(provider)
-                && !"eastmoney-public".equals(provider)) {
+                && !"eastmoney-public".equals(provider)
+                && !"eastmoney-market".equals(provider)) {
             throw new IllegalArgumentException(
                     "fundkeeper.valuation.provider must be 'none' "
-                            + "or 'eastmoney-public'");
+                            + "'eastmoney-public', or 'eastmoney-market'");
         }
         if (refreshDelayMs < 30_000) {
             throw new IllegalArgumentException(
@@ -78,6 +80,9 @@ public record ValuationProperties(
                     "Valuation paging configuration is invalid");
         }
         requireText(eastmoneyApiBaseUrl, "eastmoney-api-base-url");
+        requireText(
+                eastmoneyQuoteBaseUrl,
+                "eastmoney-quote-base-url");
         requireText(eastmoneyReferer, "eastmoney-referer");
         requireText(zone, "zone");
         ZoneId.of(zone);

@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import com.fundkeeper.backend.fund.domain.FundCategory;
+import com.fundkeeper.backend.fund.domain.FundTradingMode;
 import com.fundkeeper.backend.fund.reference.application.ReferenceDataProperties;
 import com.fundkeeper.backend.fund.reference.domain.FundReferenceDataProvider;
 import com.fundkeeper.backend.fund.reference.domain.FundReferenceRecord;
@@ -240,9 +241,20 @@ public class EastmoneyPublicReferenceDataProvider
                 code,
                 name,
                 category,
+                tradingMode(code, name),
                 "CNY",
                 true,
                 null));
+    }
+
+    private FundTradingMode tradingMode(String code, String name) {
+        boolean exchangeCode = code.startsWith("15")
+                || code.startsWith("5");
+        boolean listedEtf = name.toUpperCase().contains("ETF")
+                && !name.contains("联接");
+        return exchangeCode && listedEtf
+                ? FundTradingMode.EXCHANGE_TRADED
+                : FundTradingMode.OFF_EXCHANGE;
     }
 
     private Set<LocalDate> parseClosedDates(

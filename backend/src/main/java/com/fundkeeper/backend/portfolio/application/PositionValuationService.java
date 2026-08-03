@@ -10,9 +10,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.fundkeeper.backend.fund.domain.FundDataRepository;
+import com.fundkeeper.backend.fund.domain.FundTradingMode;
 import com.fundkeeper.backend.fund.domain.OfficialNav;
-import com.fundkeeper.backend.fund.valuation.application.ValuationQueryService;
-import com.fundkeeper.backend.fund.valuation.domain.IntradayValuation;
+import com.fundkeeper.backend.fund.quote.application.MarketQuoteQueryService;
+import com.fundkeeper.backend.fund.quote.domain.MarketQuote;
 import com.fundkeeper.backend.fund.valuation.domain.ValuationStatus;
 
 @Service
@@ -23,15 +24,15 @@ public class PositionValuationService {
 
     private final PortfolioService portfolioService;
     private final FundDataRepository fundDataRepository;
-    private final ValuationQueryService valuationQueryService;
+    private final MarketQuoteQueryService marketQuoteQueryService;
 
     public PositionValuationService(
             PortfolioService portfolioService,
             FundDataRepository fundDataRepository,
-            ValuationQueryService valuationQueryService) {
+            MarketQuoteQueryService marketQuoteQueryService) {
         this.portfolioService = portfolioService;
         this.fundDataRepository = fundDataRepository;
-        this.valuationQueryService = valuationQueryService;
+        this.marketQuoteQueryService = marketQuoteQueryService;
     }
 
     @Transactional(readOnly = true)
@@ -53,30 +54,46 @@ public class PositionValuationService {
 
     private PositionPrice price(
             PositionDetails details) {
-        var quote = valuationQueryService.quote(
-                details.fund().code());
-        if (quote.valuation().isPresent()
-                && quote.status() != ValuationStatus.STALE) {
-            IntradayValuation valuation =
-                    quote.valuation().get();
-            return new PositionPrice(
-                    quote.status(),
-                    ValuationPriceType.ESTIMATED,
-                    valuation.estimatedNav(),
-                    valuation.estimatedChangePercent(),
-                    valuation.baseNavDate(),
-                    valuation.baseNav(),
-                    valuation.valuationDate(),
-                    valuation.fetchedAt(),
-                    valuation.dataSource());
+        if (details.fund().tradingMode()
+                == FundTradingMode.EXCHANGE_TRADED) {
+            return exchangePrice(details);
         }
+        return officialPrice(
+                details,
+                ValuationStatus.OFFICIAL);
+    }
 
+    private PositionPrice exchangePrice(
+            PositionDetails details) {
+        var result = marketQuoteQueryService.quote(
+                details.fund().code());
+        if (result.quote().isPresent()
+                && result.status() != ValuationStatus.STALE
+                && result.status() != ValuationStatus.UNAVAILABLE) {
+            MarketQuote quote = result.quote().get();
+            return new PositionPrice(
+                    result.status(),
+                    ValuationPriceType.MARKET,
+                    quote.price(),
+                    quote.changePercent(),
+                    null,
+                    quote.previousClose(),
+                    quote.tradeDate(),
+                    quote.observedAt(),
+                    quote.dataSource());
+        }
+        return officialPrice(details, result.status());
+    }
+
+    private PositionPrice officialPrice(
+            PositionDetails details,
+            ValuationStatus status) {
         var official = fundDataRepository
                 .findLatestOfficialNav(details.fund().id());
         if (official.isPresent()) {
             OfficialNav nav = official.get();
             return new PositionPrice(
-                    quote.status(),
+                    status,
                     ValuationPriceType.OFFICIAL,
                     nav.unitNav(),
                     null,
@@ -87,7 +104,7 @@ public class PositionValuationService {
                     nav.dataSource());
         }
         return new PositionPrice(
-                quote.status(),
+                status,
                 null,
                 null,
                 null,
