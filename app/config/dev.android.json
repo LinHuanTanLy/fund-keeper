@@ -1,0 +1,7 @@
+{
+  "APP_FLAVOR": "dev",
+  "API_BASE_URL": "http://10.0.2.2:8080",
+  "POLLING_INTERVAL_SECONDS": "30",
+  "REQUEST_TIMEOUT_SECONDS": "15",
+  "ENABLE_NETWORK_LOGS": "true"
+}

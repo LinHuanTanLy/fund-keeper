@@ -1,0 +1,7 @@
+{
+  "APP_FLAVOR": "prod",
+  "API_BASE_URL": "https://api.fundkeeper.invalid",
+  "POLLING_INTERVAL_SECONDS": "30",
+  "REQUEST_TIMEOUT_SECONDS": "15",
+  "ENABLE_NETWORK_LOGS": "false"
+}
