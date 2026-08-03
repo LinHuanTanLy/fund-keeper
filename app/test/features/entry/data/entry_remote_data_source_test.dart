@@ -156,6 +156,56 @@ void main() {
     expect(result.canCommit, isFalse);
     expect(result.issues.single.code, 'JSON_SYNTAX_ERROR');
   });
+
+  test('parses snapshot calibration positions and differences', () {
+    final result = ImportPreflightResult.fromJson({
+      'batchId': 'snapshot-calibration-review-001',
+      'status': 'READY_TO_COMMIT',
+      'importType': 'POSITION_SNAPSHOT',
+      'totalCount': 1,
+      'importableCount': 1,
+      'warningCount': 1,
+      'errorCount': 0,
+      'calibrationCount': 1,
+      'rows': [
+        {
+          'row': 1,
+          'fundCode': '000001',
+          'fundName': '测试基金',
+          'action': 'CALIBRATE',
+          'positionStatus': 'CONFIRMED',
+          'reviewStatus': 'NEEDS_CALIBRATION',
+          'currentPosition': {
+            'shares': 50,
+            'costAmount': 90,
+            'status': 'CONFIRMED',
+            'holdingStartDate': '2026-07-01',
+          },
+          'targetPosition': {
+            'shares': 60,
+            'costAmount': 120,
+            'status': 'CONFIRMED',
+            'holdingStartDate': '2026-06-15',
+          },
+          'difference': {
+            'sharesDelta': 10,
+            'costAmountDelta': 30,
+            'statusChanged': false,
+            'holdingStartDateChanged': true,
+          },
+          'issues': <Object?>[],
+        },
+      ],
+      'issues': <Object?>[],
+    });
+
+    final row = result.rows.single;
+    expect(row.needsCalibration, isTrue);
+    expect(row.currentPosition!.shares, Decimal.parse('50'));
+    expect(row.targetPosition!.costAmount, Decimal.parse('120'));
+    expect(row.difference!.sharesDelta, Decimal.parse('10'));
+    expect(row.difference!.holdingStartDateChanged, isTrue);
+  });
 }
 
 class _EntryContractAdapter implements HttpClientAdapter {

@@ -124,26 +124,60 @@ class FakeEntryRemoteDataSource implements EntryRemoteDataSource {
 ImportPreflightResult importPreflightFixture({
   String status = 'READY_TO_COMMIT',
   int errorCount = 0,
+  bool needsCalibration = false,
+  bool clearsPosition = false,
 }) {
+  final requiresCalibration = needsCalibration || clearsPosition;
   return ImportPreflightResult(
     batchId: 'batch-001',
     status: status,
-    importType: 'TRANSACTION_BATCH',
+    importType: requiresCalibration ? 'POSITION_SNAPSHOT' : 'TRANSACTION_BATCH',
     accountName: '我的支付宝',
     accountWillCreate: false,
     totalCount: 1,
     importableCount: errorCount == 0 ? 1 : 0,
-    warningCount: 0,
+    warningCount: requiresCalibration ? 1 : 0,
     errorCount: errorCount,
-    calibrationCount: 0,
+    calibrationCount: requiresCalibration ? 1 : 0,
     rows: [
       ImportRowPreview(
         row: 1,
         rowId: 'row-001',
         fundCode: '005827',
         fundName: '易方达蓝筹精选混合',
-        action: errorCount == 0 ? 'IMPORT' : 'REJECT',
+        action: errorCount == 0
+            ? requiresCalibration
+                  ? clearsPosition
+                        ? 'CLEAR'
+                        : 'CALIBRATE'
+                  : 'IMPORT'
+            : 'REJECT',
         resultStatus: errorCount == 0 ? 'ESTIMATED' : null,
+        reviewStatus: requiresCalibration ? 'NEEDS_CALIBRATION' : 'NONE',
+        currentPosition: requiresCalibration
+            ? SnapshotPositionPreview(
+                shares: Decimal.parse('50'),
+                costAmount: Decimal.parse('90'),
+                status: 'CONFIRMED',
+                holdingStartDate: DateTime(2026, 7, 1),
+              )
+            : null,
+        targetPosition: requiresCalibration
+            ? SnapshotPositionPreview(
+                shares: Decimal.parse(clearsPosition ? '0' : '60'),
+                costAmount: Decimal.parse(clearsPosition ? '0' : '120'),
+                status: clearsPosition ? null : 'CONFIRMED',
+                holdingStartDate: clearsPosition ? null : DateTime(2026, 6, 15),
+              )
+            : null,
+        difference: requiresCalibration
+            ? SnapshotDifferencePreview(
+                sharesDelta: Decimal.parse(clearsPosition ? '-50' : '10'),
+                costAmountDelta: Decimal.parse(clearsPosition ? '-90' : '30'),
+                statusChanged: clearsPosition,
+                holdingStartDateChanged: true,
+              )
+            : null,
         issues: errorCount == 0
             ? const []
             : const [

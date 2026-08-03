@@ -238,6 +238,42 @@ class AppLocalizationsZh extends AppLocalizations {
   String get calibrations => '需校准';
 
   @override
+  String get calibrationReviewTitle => '请核对持仓变更';
+
+  @override
+  String get calibrationReviewHint => '以下持仓与当前记录不同。确认整批导入后会一次性生效，并保留校准记录。';
+
+  @override
+  String get calibrationWillApply => '确认后将校准当前持仓';
+
+  @override
+  String get positionWillClear => '确认后将清空当前持仓';
+
+  @override
+  String get currentValue => '当前';
+
+  @override
+  String get targetValue => '导入后';
+
+  @override
+  String get holdingStartDate => '持有起始日';
+
+  @override
+  String get sharesDelta => '份额变化';
+
+  @override
+  String get costDelta => '成本变化';
+
+  @override
+  String get statusWillChange => '持仓状态将变化';
+
+  @override
+  String get holdingStartDateWillChange => '持有起始日将变化';
+
+  @override
+  String get emptyPosition => '无持仓';
+
+  @override
   String get willCreateAccount => '确认时将创建账户';
 
   @override

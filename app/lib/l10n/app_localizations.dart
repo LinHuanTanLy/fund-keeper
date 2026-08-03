@@ -550,6 +550,78 @@ abstract class AppLocalizations {
   /// **'需校准'**
   String get calibrations;
 
+  /// No description provided for @calibrationReviewTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'请核对持仓变更'**
+  String get calibrationReviewTitle;
+
+  /// No description provided for @calibrationReviewHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'以下持仓与当前记录不同。确认整批导入后会一次性生效，并保留校准记录。'**
+  String get calibrationReviewHint;
+
+  /// No description provided for @calibrationWillApply.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后将校准当前持仓'**
+  String get calibrationWillApply;
+
+  /// No description provided for @positionWillClear.
+  ///
+  /// In zh, this message translates to:
+  /// **'确认后将清空当前持仓'**
+  String get positionWillClear;
+
+  /// No description provided for @currentValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前'**
+  String get currentValue;
+
+  /// No description provided for @targetValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'导入后'**
+  String get targetValue;
+
+  /// No description provided for @holdingStartDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'持有起始日'**
+  String get holdingStartDate;
+
+  /// No description provided for @sharesDelta.
+  ///
+  /// In zh, this message translates to:
+  /// **'份额变化'**
+  String get sharesDelta;
+
+  /// No description provided for @costDelta.
+  ///
+  /// In zh, this message translates to:
+  /// **'成本变化'**
+  String get costDelta;
+
+  /// No description provided for @statusWillChange.
+  ///
+  /// In zh, this message translates to:
+  /// **'持仓状态将变化'**
+  String get statusWillChange;
+
+  /// No description provided for @holdingStartDateWillChange.
+  ///
+  /// In zh, this message translates to:
+  /// **'持有起始日将变化'**
+  String get holdingStartDateWillChange;
+
+  /// No description provided for @emptyPosition.
+  ///
+  /// In zh, this message translates to:
+  /// **'无持仓'**
+  String get emptyPosition;
+
   /// No description provided for @willCreateAccount.
   ///
   /// In zh, this message translates to:

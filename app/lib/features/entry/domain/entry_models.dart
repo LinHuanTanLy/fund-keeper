@@ -213,6 +213,53 @@ class ImportIssuePreview {
   bool get isError => severity == 'ERROR';
 }
 
+class SnapshotPositionPreview {
+  const SnapshotPositionPreview({
+    required this.shares,
+    required this.costAmount,
+    required this.status,
+    required this.holdingStartDate,
+  });
+
+  factory SnapshotPositionPreview.fromJson(Map<String, dynamic> json) {
+    return SnapshotPositionPreview(
+      shares: _decimalOrNull(json['shares']),
+      costAmount: _decimalOrNull(json['costAmount']),
+      status: json['status'] as String?,
+      holdingStartDate: _dateOrNull(json['holdingStartDate']),
+    );
+  }
+
+  final Decimal? shares;
+  final Decimal? costAmount;
+  final String? status;
+  final DateTime? holdingStartDate;
+}
+
+class SnapshotDifferencePreview {
+  const SnapshotDifferencePreview({
+    required this.sharesDelta,
+    required this.costAmountDelta,
+    required this.statusChanged,
+    required this.holdingStartDateChanged,
+  });
+
+  factory SnapshotDifferencePreview.fromJson(Map<String, dynamic> json) {
+    return SnapshotDifferencePreview(
+      sharesDelta: _decimalOrNull(json['sharesDelta']),
+      costAmountDelta: _decimalOrNull(json['costAmountDelta']),
+      statusChanged: json['statusChanged'] as bool? ?? false,
+      holdingStartDateChanged:
+          json['holdingStartDateChanged'] as bool? ?? false,
+    );
+  }
+
+  final Decimal? sharesDelta;
+  final Decimal? costAmountDelta;
+  final bool statusChanged;
+  final bool holdingStartDateChanged;
+}
+
 class ImportRowPreview {
   const ImportRowPreview({
     required this.row,
@@ -221,6 +268,10 @@ class ImportRowPreview {
     required this.fundName,
     required this.action,
     required this.resultStatus,
+    required this.reviewStatus,
+    required this.currentPosition,
+    required this.targetPosition,
+    required this.difference,
     required this.issues,
   });
 
@@ -233,8 +284,20 @@ class ImportRowPreview {
       action: json['action'] as String?,
       resultStatus:
           json['transactionStatus'] as String? ??
-          json['positionStatus'] as String? ??
-          json['reviewStatus'] as String?,
+          json['positionStatus'] as String?,
+      reviewStatus: json['reviewStatus'] as String?,
+      currentPosition: _mapOrNull(
+        json['currentPosition'],
+        SnapshotPositionPreview.fromJson,
+      ),
+      targetPosition: _mapOrNull(
+        json['targetPosition'],
+        SnapshotPositionPreview.fromJson,
+      ),
+      difference: _mapOrNull(
+        json['difference'],
+        SnapshotDifferencePreview.fromJson,
+      ),
       issues: _maps(
         json['issues'],
       ).map(ImportIssuePreview.fromJson).toList(growable: false),
@@ -247,7 +310,14 @@ class ImportRowPreview {
   final String? fundName;
   final String? action;
   final String? resultStatus;
+  final String? reviewStatus;
+  final SnapshotPositionPreview? currentPosition;
+  final SnapshotPositionPreview? targetPosition;
+  final SnapshotDifferencePreview? difference;
   final List<ImportIssuePreview> issues;
+
+  bool get needsCalibration => reviewStatus == 'NEEDS_CALIBRATION';
+  bool get clearsPosition => action == 'CLEAR';
 }
 
 class ImportPreflightResult {
@@ -376,4 +446,14 @@ List<Map<String, dynamic>> _maps(Object? value) {
       .whereType<Map<Object?, Object?>>()
       .map((item) => Map<String, dynamic>.from(item))
       .toList(growable: false);
+}
+
+T? _mapOrNull<T>(
+  Object? value,
+  T Function(Map<String, dynamic> json) fromJson,
+) {
+  if (value is! Map<Object?, Object?>) {
+    return null;
+  }
+  return fromJson(Map<String, dynamic>.from(value));
 }

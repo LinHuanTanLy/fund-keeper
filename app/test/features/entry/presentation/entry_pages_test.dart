@@ -154,6 +154,61 @@ void main() {
     expect(entry.commitCalls, 0);
   });
 
+  testWidgets('snapshot calibration shows current target and differences', (
+    tester,
+  ) async {
+    final entry = FakeEntryRemoteDataSource()
+      ..preflightResult = importPreflightFixture(needsCalibration: true);
+    await _pump(
+      tester,
+      const JsonImportPage(),
+      entry: entry,
+      portfolio: FakePortfolioRemoteDataSource(),
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('json-import-content')),
+      '{"importType":"POSITION_SNAPSHOT"}',
+    );
+    await tester.tap(find.byKey(const Key('json-import-preflight')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('请核对持仓变更'), findsOneWidget);
+    expect(find.byKey(const Key('json-import-calibration-1')), findsOneWidget);
+    expect(find.text('确认后将校准当前持仓'), findsOneWidget);
+    expect(find.text('份额变化 +10'), findsOneWidget);
+    expect(find.text('成本变化 +¥30.00'), findsOneWidget);
+    expect(find.text('持有起始日将变化'), findsOneWidget);
+    expect(find.byKey(const Key('json-import-commit')), findsOneWidget);
+    expect(entry.commitCalls, 0);
+  });
+
+  testWidgets('full snapshot clearly warns before clearing a position', (
+    tester,
+  ) async {
+    final entry = FakeEntryRemoteDataSource()
+      ..preflightResult = importPreflightFixture(clearsPosition: true);
+    await _pump(
+      tester,
+      const JsonImportPage(),
+      entry: entry,
+      portfolio: FakePortfolioRemoteDataSource(),
+    );
+
+    await tester.enterText(
+      find.byKey(const Key('json-import-content')),
+      '{"importType":"POSITION_SNAPSHOT","snapshotMode":"FULL_ACCOUNT"}',
+    );
+    await tester.tap(find.byKey(const Key('json-import-preflight')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('确认后将清空当前持仓'), findsOneWidget);
+    expect(find.text('份额变化 -50'), findsOneWidget);
+    expect(find.text('成本变化 -¥90.00'), findsOneWidget);
+    expect(find.text('无持仓'), findsOneWidget);
+    expect(entry.commitCalls, 0);
+  });
+
   testWidgets('business conflict disables commit until a new preflight', (
     tester,
   ) async {
