@@ -26,6 +26,10 @@ Content-Type: application/json
 `ESTIMATED` 持仓；信息不足时保存为 `PENDING`，且不提前修改持仓。
 如果平台份额和确认日期均已提供，则直接生成 `CONFIRMED` 记录。
 
+场内 ETF 同样允许只填写金额，但实时行情只能用于当前市值，不能证明历史
+成交结果。缺少券商最终成交份额时只能形成 `ESTIMATED` 或 `PENDING` 记录；
+补充最终成交份额和确认日期后，才可以按平台事实校准为 `CONFIRMED`。
+
 ## 2. 确认待处理买入
 
 ```http

@@ -1,6 +1,8 @@
 # Fund Keeper
 
-面向多平台基金持仓的管理工具。项目当前已完成认证、平台账户、基金资料、手动买入、手动卖出、持仓快照导入和批量买入导入等后端纵向切片：用户可以登录后按金额维护交易，并在自己的数据空间内查看账户级持仓。
+面向多平台基金持仓的管理工具。项目已经形成 Spring Boot 后端与 Flutter
+客户端的 V1 集成基线，覆盖认证、账户、手动买卖、JSON 导入、持仓收益、
+场内 ETF 行情、场外正式净值和主题分布等核心切片。
 
 ## 当前技术栈
 
@@ -10,7 +12,9 @@
 - JWT Access Token + 不透明 Refresh Token
 - Mailpit（本地接收开发邮件）
 
-产品边界和验收规则见 [产品需求文档](docs/product-requirements.md)，技术规格见 [项目规格](docs/project-spec.md)。
+产品边界和验收规则见 [产品需求文档](docs/product-requirements.md)，技术规格见
+[项目规格](docs/project-spec.md)，已完成证据和未决风险见
+[V1 交付状态](docs/delivery-status.md)。
 
 ## 本地启动
 
@@ -40,6 +44,34 @@ cd backend
 - API：`http://localhost:8080`
 - 健康检查：`http://localhost:8080/actuator/health`
 - 开发邮件箱：`http://localhost:8025`
+
+## Flutter 客户端
+
+Flutter 3.41 / Dart 3.11 客户端位于 `app/`，V1 支持 Android 和 iOS。
+
+Android 模拟器通过 `10.0.2.2` 访问 Mac 上的后端：
+
+```bash
+cd app
+flutter run --flavor dev --dart-define-from-file=config/dev.android.json
+```
+
+iOS 模拟器使用本机回环地址：
+
+```bash
+cd app
+flutter run --flavor dev --dart-define-from-file=config/dev.ios.json
+```
+
+生产构建前必须将 `config/prod.json` 中的保留域名替换为真实 HTTPS API。
+
+```bash
+flutter build apk --flavor prod --dart-define-from-file=config/prod.json
+flutter build ios --flavor prod --dart-define-from-file=config/prod.json
+```
+
+客户端使用 Riverpod、Dio、GoRouter、Decimal 和受控代码生成。已确认的首页视觉
+基线见 [Fund Keeper 首页设计稿](docs/design/fund-keeper-home-v1.png)。
 
 ## 认证 API
 
@@ -100,7 +132,7 @@ curl -X POST http://localhost:8080/api/v1/accounts \
 | GET | `/api/v1/transactions/requests/{requestId}` | 超时后按幂等键查询原结果 |
 | GET | `/api/v1/positions` | 查询当前用户的账户级持仓 |
 | GET | `/api/v1/positions?accountId={accountId}` | 按平台账户筛选持仓 |
-| GET | `/api/v1/positions/valuations` | 查询带盘中估值或正式净值降级的持仓 |
+| GET | `/api/v1/positions/valuations` | 查询带场内行情或场外正式净值的持仓 |
 | POST | `/api/v1/imports/position-snapshots/preflight` | 预检持仓快照 JSON，不修改正式业务数据 |
 | POST | `/api/v1/imports/position-snapshots/{batchId}/commit` | 确认最后一次成功预检并原子写入 |
 | POST | `/api/v1/imports/transaction-batches/preflight` | 预检交易流水 JSON；当前支持批量买入 |
@@ -149,9 +181,9 @@ curl -X POST http://localhost:8080/api/v1/transactions/buys \
 重复记账，任意一行写入失败会整批回滚。协议和示例见
 [持仓快照 JSON 导入](docs/position-snapshot-import.md)。
 
-交易流水 JSON 同样使用两阶段导入，并与单笔买入共用交易日、15:00 截止、
-净值、费率和持仓计算规则。当前切片只支持 `BUY`；`SELL` 会在预检中明确返回
-`SELL_NOT_SUPPORTED_YET`，不会写入。协议和示例见
+交易流水 JSON 同样使用两阶段导入，并与单笔交易共用交易日、15:00 截止、
+净值、费率和持仓计算规则。当前支持批量买入、部分卖出和全部卖出，并按照
+`transactions` 数组顺序模拟和提交持仓变化。协议和示例见
 [批量交易 JSON 导入](docs/transaction-batch-import.md)。
 
 基金目录、逐日交易日历和正式净值已经提供可替换的数据同步层。个人开发环境默认可使用免费的东方财富公开页面数据和上交所休市安排；Tushare 作为可选适配器保留。业务请求始终读取本地 MySQL，第三方同步失败时保留旧数据，不会清空或伪造数据。申购费率仍需独立、可追溯的数据来源；缺失时交易保持 `PENDING`。
@@ -181,22 +213,34 @@ FUND_REFERENCE_DATA_FUND_CODES=005827,000001
 
 东方财富页面数据不是承诺稳定的正式开放 API，只用于个人学习和开发验证。若使用 Tushare，可将 Provider 改为 `tushare` 并配置 `TUSHARE_TOKEN`。完整的数据流、授权边界和配置说明见 [基金参考数据接入](docs/fund-reference-data.md)。
 
-### 可选：盘中估值
+### 场内 ETF 行情与场外正式净值
 
-盘中估值默认关闭。个人开发环境可配置：
+零成本个人开发方案将两类价格严格分开：
 
 ```dotenv
-FUND_VALUATION_PROVIDER=eastmoney-public
+FUND_VALUATION_PROVIDER=eastmoney-market
 FUND_VALUATION_REFRESH_ENABLED=true
 FUND_VALUATION_REFRESH_DELAY_MS=60000
-FUND_VALUATION_FUND_CODES=005827
+FUND_VALUATION_FUND_CODES=
 ```
 
-首次刷新建立分页索引，后续只请求现有持仓、待处理买入和预热基金所在分页。
-估值保存到 Redis：90 秒后标记 `DELAYED`，3 分钟后标记 `STALE`；
-休市、收盘或估值不可用时，
-`/api/v1/positions/valuations` 使用最近正式净值并明确返回状态。详情见
-[盘中基金估值](docs/fund-valuation.md)。
+场内 ETF 使用免费公开市场行情，场外基金只使用按日公布的正式净值。行情
+保存到 Redis，90 秒后标记 `DELAYED`，3 分钟后标记 `STALE`；失败时降级
+到最近正式净值，不会生成或猜测价格。免费公开端点没有 SLA，只适合个人
+学习和自用。详情见[基金价格与净值](docs/fund-valuation.md)。
+
+## 部署
+
+项目提供通用 Java 21 Docker 镜像和单机生产 Compose：
+
+```bash
+docker build -t fund-keeper-backend ./backend
+cp .env.production.example .env.production
+docker compose -f compose.production.yaml up -d --build
+```
+
+Zeabur、Railway、Oracle Cloud 与腾讯云轻量服务器的适配性、费用边界和
+备案要求见[服务端部署选择](docs/deployment.md)。
 
 ## 测试
 
@@ -205,6 +249,15 @@ FUND_VALUATION_FUND_CODES=005827
 ```bash
 cd backend
 ./mvnw test
+```
+
+Flutter 检查：
+
+```bash
+cd app
+dart run build_runner build --delete-conflicting-outputs
+flutter analyze
+flutter test
 ```
 
 集成测试覆盖认证生命周期、账户隔离、15:00 截止、周末交易日、基金范围、正式数据缺失降级、平台确认份额、买入与卖出的移动平均成本、已实现收益、全量清仓、跨用户资产隔离、账户归档约束、并发重复请求不重复记账、快照与批量买入的预检/幂等/原子回滚，以及第三方协议解析、参考数据幂等同步、估值分页索引、实时/过期状态和正式净值降级。
