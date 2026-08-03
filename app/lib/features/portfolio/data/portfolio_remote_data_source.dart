@@ -9,6 +9,12 @@ abstract interface class PortfolioRemoteDataSource {
   Future<PortfolioOverview> getOverview(String? accountId);
 
   Future<List<FundPortfolioCard>> listFunds(String? accountId);
+
+  Future<FundPortfolioDetail> getFundDetail(
+    String fundCode, {
+    int page = 0,
+    int size = 20,
+  });
 }
 
 class DioPortfolioRemoteDataSource implements PortfolioRemoteDataSource {
@@ -49,6 +55,21 @@ class DioPortfolioRemoteDataSource implements PortfolioRemoteDataSource {
     return _requiredList(response)
         .map((item) => FundPortfolioCard.fromJson(_requiredMap(item)))
         .toList(growable: false);
+  }
+
+  @override
+  Future<FundPortfolioDetail> getFundDetail(
+    String fundCode, {
+    int page = 0,
+    int size = 20,
+  }) async {
+    final response = await _request(
+      () => _dio.get<Object?>(
+        '/api/v1/portfolio/funds/$fundCode',
+        queryParameters: {'page': page, 'size': size},
+      ),
+    );
+    return FundPortfolioDetail.fromJson(_requiredData(response));
   }
 
   Map<String, Object?>? _accountQuery(String? accountId) {

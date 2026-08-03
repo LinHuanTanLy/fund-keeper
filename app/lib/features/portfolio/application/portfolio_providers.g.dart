@@ -316,3 +316,81 @@ final class PortfolioHomeDataProvider
 }
 
 String _$portfolioHomeDataHash() => r'5a8a2df78fdcdc98bcfa840a92ecfdadb1c81e8c';
+
+@ProviderFor(fundPortfolioDetail)
+final fundPortfolioDetailProvider = FundPortfolioDetailFamily._();
+
+final class FundPortfolioDetailProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<FundPortfolioDetail>,
+          FundPortfolioDetail,
+          FutureOr<FundPortfolioDetail>
+        >
+    with
+        $FutureModifier<FundPortfolioDetail>,
+        $FutureProvider<FundPortfolioDetail> {
+  FundPortfolioDetailProvider._({
+    required FundPortfolioDetailFamily super.from,
+    required String super.argument,
+  }) : super(
+         retry: null,
+         name: r'fundPortfolioDetailProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
+
+  @override
+  String debugGetCreateSourceHash() => _$fundPortfolioDetailHash();
+
+  @override
+  String toString() {
+    return r'fundPortfolioDetailProvider'
+        ''
+        '($argument)';
+  }
+
+  @$internal
+  @override
+  $FutureProviderElement<FundPortfolioDetail> $createElement(
+    $ProviderPointer pointer,
+  ) => $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<FundPortfolioDetail> create(Ref ref) {
+    final argument = this.argument as String;
+    return fundPortfolioDetail(ref, argument);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is FundPortfolioDetailProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
+}
+
+String _$fundPortfolioDetailHash() =>
+    r'14022bd5f0ad30a521db4a4fbd5a51836b2915b4';
+
+final class FundPortfolioDetailFamily extends $Family
+    with $FunctionalFamilyOverride<FutureOr<FundPortfolioDetail>, String> {
+  FundPortfolioDetailFamily._()
+    : super(
+        retry: null,
+        name: r'fundPortfolioDetailProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  FundPortfolioDetailProvider call(String fundCode) =>
+      FundPortfolioDetailProvider._(argument: fundCode, from: this);
+
+  @override
+  String toString() => r'fundPortfolioDetailProvider';
+}

@@ -880,6 +880,66 @@ abstract class AppLocalizations {
   /// **'持仓数据加载失败'**
   String get portfolioLoadFailed;
 
+  /// No description provided for @fundDetailTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'基金详情'**
+  String get fundDetailTitle;
+
+  /// No description provided for @fundDetailLoadFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'基金详情加载失败'**
+  String get fundDetailLoadFailed;
+
+  /// No description provided for @accountPositions.
+  ///
+  /// In zh, this message translates to:
+  /// **'账户持仓'**
+  String get accountPositions;
+
+  /// No description provided for @openTransactions.
+  ///
+  /// In zh, this message translates to:
+  /// **'待处理交易'**
+  String get openTransactions;
+
+  /// No description provided for @recentTransactions.
+  ///
+  /// In zh, this message translates to:
+  /// **'最近交易'**
+  String get recentTransactions;
+
+  /// No description provided for @noOpenTransactions.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无待处理交易'**
+  String get noOpenTransactions;
+
+  /// No description provided for @noRecentTransactions.
+  ///
+  /// In zh, this message translates to:
+  /// **'暂无交易记录'**
+  String get noRecentTransactions;
+
+  /// No description provided for @currentPrice.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前价格/净值'**
+  String get currentPrice;
+
+  /// No description provided for @fundShares.
+  ///
+  /// In zh, this message translates to:
+  /// **'持有份额'**
+  String get fundShares;
+
+  /// No description provided for @dataSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'数据来源'**
+  String get dataSource;
+
   /// No description provided for @accountsLoadFailed.
   ///
   /// In zh, this message translates to:

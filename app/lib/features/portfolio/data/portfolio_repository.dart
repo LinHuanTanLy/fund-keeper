@@ -14,6 +14,10 @@ class PortfolioRepository {
     return _remote.listFunds(accountId);
   }
 
+  Future<FundPortfolioDetail> getFundDetail(String fundCode) {
+    return _remote.getFundDetail(fundCode);
+  }
+
   Future<PortfolioHomeData> loadHome(String? accountId) async {
     final overviewFuture = _remote.getOverview(accountId);
     final fundsFuture = _remote.listFunds(accountId);

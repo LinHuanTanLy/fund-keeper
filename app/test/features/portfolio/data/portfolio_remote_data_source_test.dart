@@ -23,6 +23,7 @@ void main() {
       final accounts = await remote.listAccounts();
       final overview = await remote.getOverview('account-active');
       final funds = await remote.listFunds('account-active');
+      final detail = await remote.getFundDetail('012345');
 
       expect(accounts.map((account) => account.id), ['account-active']);
       expect(adapter.requests[1].queryParameters, {
@@ -37,6 +38,13 @@ void main() {
       expect(overview.valuationStatus, PortfolioValuationStatus.unavailable);
       expect(funds.single.primaryTheme, FundPrimaryTheme.semiconductor);
       expect(funds.single.currentMarketValue, isNull);
+      expect(adapter.requests[3].path, '/api/v1/portfolio/funds/012345');
+      expect(adapter.requests[3].queryParameters, {'page': 0, 'size': 20});
+      expect(detail.summary.fundCode, '012345');
+      expect(detail.accounts.single.accountName, '默认账户');
+      expect(detail.accounts.single.unitNav, Decimal.parse('1.25'));
+      expect(detail.openTransactions.single.status, 'PENDING');
+      expect(detail.transactions.totalElements, 1);
 
       dio.close(force: true);
     },
@@ -79,6 +87,8 @@ class _PortfolioContractAdapter implements HttpClientAdapter {
           'code': 'OK',
           'data': [_fundJson()],
         });
+      case '/api/v1/portfolio/funds/012345':
+        return _jsonResponse({'code': 'OK', 'data': _detailJson()});
       default:
         return _jsonResponse({
           'code': 'NOT_FOUND',
@@ -143,6 +153,73 @@ class _PortfolioContractAdapter implements HttpClientAdapter {
       'observedAt': null,
       'holdingStartDate': '2026-07-20',
       'holdingDays': 8,
+    };
+  }
+
+  Map<String, Object?> _detailJson() {
+    final transaction = {
+      'id': 'transaction-1',
+      'requestId': 'request-1',
+      'accountId': 'account-active',
+      'accountName': '默认账户',
+      'fundCode': '012345',
+      'fundName': '某半导体基金',
+      'type': 'BUY',
+      'sellMode': null,
+      'status': 'PENDING',
+      'amount': 1000,
+      'expectedAmount': null,
+      'actualReceivedAmount': null,
+      'removedCost': null,
+      'realizedProfit': null,
+      'shares': null,
+      'submittedDate': '2026-07-20',
+      'submittedPeriod': 'BEFORE_15',
+      'effectiveTradeDate': '2026-07-20',
+      'confirmedDate': null,
+      'pendingReason': 'WAITING_NAV',
+      'cancellationReason': null,
+      'createdAt': '2026-07-20T02:00:00Z',
+    };
+    return {
+      'summary': _fundJson(),
+      'accounts': [
+        {
+          'positionId': 'position-1',
+          'accountId': 'account-active',
+          'accountName': '默认账户',
+          'accountPlatform': 'OTHER',
+          'shares': 800,
+          'holdingCost': 1000,
+          'currentMarketValue': null,
+          'currentHoldingProfit': null,
+          'currentHoldingReturnPercent': null,
+          'realizedProfit': 0,
+          'cumulativeProfit': null,
+          'todayEstimatedProfit': null,
+          'openSellCount': 0,
+          'positionStatus': 'ESTIMATED',
+          'valuationStatus': 'OFFICIAL',
+          'priceType': 'OFFICIAL',
+          'unitNav': 1.25,
+          'estimatedChangePercent': null,
+          'baseNavDate': '2026-07-19',
+          'baseNav': 1.24,
+          'dataDate': '2026-07-20',
+          'observedAt': null,
+          'dataSource': 'eastmoney-public',
+          'holdingStartDate': '2026-07-20',
+          'holdingDays': 8,
+        },
+      ],
+      'openTransactions': [transaction],
+      'transactions': {
+        'items': [transaction],
+        'page': 0,
+        'size': 20,
+        'totalElements': 1,
+        'totalPages': 1,
+      },
     };
   }
 

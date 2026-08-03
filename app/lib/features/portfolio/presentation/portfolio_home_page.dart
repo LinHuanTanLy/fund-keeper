@@ -219,7 +219,14 @@ class _PortfolioHomePageState extends ConsumerState<PortfolioHomePage>
           )
         else
           for (final fund in funds) ...[
-            _FundHoldingCard(fund: fund, strings: strings),
+            _FundHoldingCard(
+              fund: fund,
+              strings: strings,
+              onTap: () => context.pushNamed(
+                'fund-detail',
+                pathParameters: {'fundCode': fund.fundCode},
+              ),
+            ),
             const SizedBox(height: AppSpacing.sm),
           ],
       ],
@@ -696,10 +703,15 @@ class _ThemeDistributionCard extends StatelessWidget {
 }
 
 class _FundHoldingCard extends StatelessWidget {
-  const _FundHoldingCard({required this.fund, required this.strings});
+  const _FundHoldingCard({
+    required this.fund,
+    required this.strings,
+    required this.onTap,
+  });
 
   final FundPortfolioCard fund;
   final AppLocalizations strings;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -708,146 +720,150 @@ class _FundHoldingCard extends StatelessWidget {
     );
     return Card(
       key: Key('fund-card-${fund.fundCode}'),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        fund.fundName,
-                        style: Theme.of(context).textTheme.titleMedium,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          fund.fundName,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: AppSpacing.xxs),
+                        Text(
+                          '${fund.fundCode} · '
+                          '${_themeLabel(strings, fund.primaryTheme)}',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.xs,
+                      vertical: AppSpacing.xxs,
+                    ),
+                    decoration: BoxDecoration(
+                      color: returnColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(AppRadius.pill),
+                    ),
+                    child: Text(
+                      PortfolioFormatters.percent(
+                        fund.currentHoldingReturnPercent,
+                        signed: true,
                       ),
-                      const SizedBox(height: AppSpacing.xxs),
-                      Text(
-                        '${fund.fundCode} · '
-                        '${_themeLabel(strings, fund.primaryTheme)}',
-                        style: Theme.of(context).textTheme.bodyMedium,
+                      style: TextStyle(
+                        color: returnColor,
+                        fontWeight: FontWeight.w700,
                       ),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.xs,
-                    vertical: AppSpacing.xxs,
-                  ),
-                  decoration: BoxDecoration(
-                    color: returnColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(AppRadius.pill),
-                  ),
-                  child: Text(
-                    PortfolioFormatters.percent(
-                      fund.currentHoldingReturnPercent,
-                      signed: true,
-                    ),
-                    style: TextStyle(
-                      color: returnColor,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Text(
-              '${_valuationStatusLabel(strings, fund.valuationStatus, fund.priceType)} · '
-              '${fund.observedAt == null ? PortfolioFormatters.date(fund.dataDate) : PortfolioFormatters.dateTime(fund.observedAt)}',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const Divider(height: AppSpacing.lg),
-            Row(
-              children: [
-                Expanded(
-                  child: _FundMetric(
-                    label: strings.holdingAmount,
-                    value: PortfolioFormatters.money(fund.currentMarketValue),
-                  ),
-                ),
-                Expanded(
-                  child: _FundMetric(
-                    label: strings.holdingCost,
-                    value: PortfolioFormatters.money(fund.holdingCost),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: _FundMetric(
-                    label: strings.holdingProfit,
-                    value: PortfolioFormatters.money(
-                      fund.currentHoldingProfit,
-                      signed: true,
-                    ),
-                    color: PortfolioFormatters.valueColor(
-                      fund.currentHoldingProfit,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: _FundMetric(
-                    label: strings.todayProfit,
-                    value: PortfolioFormatters.money(
-                      fund.todayEstimatedProfit,
-                      signed: true,
-                    ),
-                    color: PortfolioFormatters.valueColor(
-                      fund.todayEstimatedProfit,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                Icon(
-                  Icons.schedule_outlined,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: AppSpacing.xxs),
-                Text(
-                  '${strings.holdingDays}: '
-                  '${fund.holdingDays?.toString() ?? '--'}',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                if (fund.openTransactionCount > 0) ...[
-                  const SizedBox(width: AppSpacing.md),
-                  const Icon(
-                    Icons.pending_actions_outlined,
-                    size: 16,
-                    color: AppColors.warning,
-                  ),
-                  const SizedBox(width: AppSpacing.xxs),
-                  Text(
-                    strings.pendingConfirmation,
-                    style: const TextStyle(
-                      color: AppColors.warning,
-                      fontSize: 12,
                     ),
                   ),
                 ],
-              ],
-            ),
-            if (fund.pendingBuyAmount != null) ...[
-              const SizedBox(height: AppSpacing.xs),
+              ),
+              const SizedBox(height: AppSpacing.sm),
               Text(
-                '${strings.pendingBuy}: '
-                '${PortfolioFormatters.money(fund.pendingBuyAmount)}',
+                '${_valuationStatusLabel(strings, fund.valuationStatus, fund.priceType)} · '
+                '${fund.observedAt == null ? PortfolioFormatters.date(fund.dataDate) : PortfolioFormatters.dateTime(fund.observedAt)}',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
+              const Divider(height: AppSpacing.lg),
+              Row(
+                children: [
+                  Expanded(
+                    child: _FundMetric(
+                      label: strings.holdingAmount,
+                      value: PortfolioFormatters.money(fund.currentMarketValue),
+                    ),
+                  ),
+                  Expanded(
+                    child: _FundMetric(
+                      label: strings.holdingCost,
+                      value: PortfolioFormatters.money(fund.holdingCost),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: _FundMetric(
+                      label: strings.holdingProfit,
+                      value: PortfolioFormatters.money(
+                        fund.currentHoldingProfit,
+                        signed: true,
+                      ),
+                      color: PortfolioFormatters.valueColor(
+                        fund.currentHoldingProfit,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: _FundMetric(
+                      label: strings.todayProfit,
+                      value: PortfolioFormatters.money(
+                        fund.todayEstimatedProfit,
+                        signed: true,
+                      ),
+                      color: PortfolioFormatters.valueColor(
+                        fund.todayEstimatedProfit,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Row(
+                children: [
+                  Icon(
+                    Icons.schedule_outlined,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: AppSpacing.xxs),
+                  Text(
+                    '${strings.holdingDays}: '
+                    '${fund.holdingDays?.toString() ?? '--'}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  if (fund.openTransactionCount > 0) ...[
+                    const SizedBox(width: AppSpacing.md),
+                    const Icon(
+                      Icons.pending_actions_outlined,
+                      size: 16,
+                      color: AppColors.warning,
+                    ),
+                    const SizedBox(width: AppSpacing.xxs),
+                    Text(
+                      strings.pendingConfirmation,
+                      style: const TextStyle(
+                        color: AppColors.warning,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              if (fund.pendingBuyAmount != null) ...[
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  '${strings.pendingBuy}: '
+                  '${PortfolioFormatters.money(fund.pendingBuyAmount)}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

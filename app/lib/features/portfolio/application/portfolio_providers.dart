@@ -41,3 +41,8 @@ Future<PortfolioHomeData> portfolioHomeData(Ref ref) {
   final accountId = ref.watch(selectedPortfolioAccountProvider);
   return ref.watch(portfolioRepositoryProvider).loadHome(accountId);
 }
+
+@riverpod
+Future<FundPortfolioDetail> fundPortfolioDetail(Ref ref, String fundCode) {
+  return ref.watch(portfolioRepositoryProvider).getFundDetail(fundCode);
+}

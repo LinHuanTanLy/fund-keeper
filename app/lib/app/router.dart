@@ -9,6 +9,7 @@ import 'package:fund_keeper/features/auth/presentation/session_gate_page.dart';
 import 'package:fund_keeper/features/entry/presentation/json_import_page.dart';
 import 'package:fund_keeper/features/entry/presentation/manual_buy_page.dart';
 import 'package:fund_keeper/features/entry/presentation/manual_sell_page.dart';
+import 'package:fund_keeper/features/portfolio/presentation/fund_detail_page.dart';
 import 'package:fund_keeper/features/portfolio/presentation/portfolio_home_page.dart';
 import 'package:fund_keeper/features/transaction/presentation/transaction_history_page.dart';
 import 'package:go_router/go_router.dart';
@@ -82,6 +83,12 @@ GoRouter appRouter(Ref ref) {
         path: '/entries/json-import',
         name: 'json-import',
         builder: (context, state) => const JsonImportPage(),
+      ),
+      GoRoute(
+        path: '/funds/:fundCode',
+        name: 'fund-detail',
+        builder: (context, state) =>
+            FundDetailPage(fundCode: state.pathParameters['fundCode']!),
       ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {

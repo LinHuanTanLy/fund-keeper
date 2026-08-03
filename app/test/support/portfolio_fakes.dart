@@ -6,17 +6,31 @@ class FakePortfolioRemoteDataSource implements PortfolioRemoteDataSource {
     List<PortfolioAccount>? accounts,
     PortfolioOverview? overview,
     List<FundPortfolioCard>? funds,
+    FundPortfolioDetail? detail,
   }) : accounts = accounts ?? const [],
        overview = overview ?? portfolioOverviewFixture(),
-       funds = funds ?? const [];
+       funds = funds ?? const [],
+       detail = detail ?? fundPortfolioDetailFixture();
 
   List<PortfolioAccount> accounts;
   PortfolioOverview overview;
   List<FundPortfolioCard> funds;
+  FundPortfolioDetail detail;
   int overviewCalls = 0;
   int fundCalls = 0;
   String? lastOverviewAccountId;
   String? lastFundsAccountId;
+  String? lastDetailFundCode;
+
+  @override
+  Future<FundPortfolioDetail> getFundDetail(
+    String fundCode, {
+    int page = 0,
+    int size = 20,
+  }) async {
+    lastDetailFundCode = fundCode;
+    return detail;
+  }
 
   @override
   Future<PortfolioOverview> getOverview(String? accountId) async {
@@ -116,5 +130,82 @@ FundPortfolioCard fundCardFixture({
     'observedAt': marketValue == null ? null : observedAt,
     'holdingStartDate': '2026-07-08',
     'holdingDays': holdingDays,
+  });
+}
+
+FundPortfolioDetail fundPortfolioDetailFixture() {
+  final summary = fundCardFixture(
+    code: '510300',
+    name: '沪深300ETF',
+    theme: 'BROAD_INDEX',
+    marketValue: 5200,
+    holdingCost: 5000,
+    holdingProfit: 200,
+    todayProfit: 35,
+  );
+  return FundPortfolioDetail.fromJson({
+    'summary': summary.toJson(),
+    'accounts': [
+      {
+        'positionId': 'position-1',
+        'accountId': 'account-1',
+        'accountName': '默认账户',
+        'accountPlatform': 'OTHER',
+        'shares': 1300,
+        'holdingCost': 5000,
+        'currentMarketValue': 5200,
+        'currentHoldingProfit': 200,
+        'currentHoldingReturnPercent': 4,
+        'realizedProfit': 0,
+        'cumulativeProfit': 200,
+        'todayEstimatedProfit': 35,
+        'openSellCount': 0,
+        'positionStatus': 'CONFIRMED',
+        'valuationStatus': 'LIVE',
+        'priceType': 'MARKET',
+        'unitNav': 4,
+        'estimatedChangePercent': 0.68,
+        'baseNavDate': '2026-08-02',
+        'baseNav': 3.97,
+        'dataDate': '2026-08-03',
+        'observedAt': '2026-08-03T02:30:00Z',
+        'dataSource': 'eastmoney-market',
+        'holdingStartDate': '2026-07-01',
+        'holdingDays': 34,
+      },
+    ],
+    'openTransactions': <Object?>[],
+    'transactions': {
+      'items': [
+        {
+          'id': 'transaction-1',
+          'requestId': 'request-1',
+          'accountId': 'account-1',
+          'accountName': '默认账户',
+          'fundCode': '510300',
+          'fundName': '沪深300ETF',
+          'type': 'BUY',
+          'sellMode': null,
+          'status': 'CONFIRMED',
+          'amount': 5000,
+          'expectedAmount': null,
+          'actualReceivedAmount': null,
+          'removedCost': null,
+          'realizedProfit': null,
+          'shares': 1300,
+          'submittedDate': '2026-07-01',
+          'submittedPeriod': 'BEFORE_15',
+          'effectiveTradeDate': '2026-07-01',
+          'confirmedDate': '2026-07-01',
+          'pendingReason': null,
+          'cancellationReason': null,
+          'createdAt': '2026-07-01T03:00:00Z',
+        },
+      ],
+      'page': 0,
+      'size': 20,
+      'totalElements': 1,
+      'totalPages': 1,
+    },
   });
 }

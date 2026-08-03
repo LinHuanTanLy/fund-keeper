@@ -405,6 +405,36 @@ class AppLocalizationsZh extends AppLocalizations {
   String get portfolioLoadFailed => '持仓数据加载失败';
 
   @override
+  String get fundDetailTitle => '基金详情';
+
+  @override
+  String get fundDetailLoadFailed => '基金详情加载失败';
+
+  @override
+  String get accountPositions => '账户持仓';
+
+  @override
+  String get openTransactions => '待处理交易';
+
+  @override
+  String get recentTransactions => '最近交易';
+
+  @override
+  String get noOpenTransactions => '暂无待处理交易';
+
+  @override
+  String get noRecentTransactions => '暂无交易记录';
+
+  @override
+  String get currentPrice => '当前价格/净值';
+
+  @override
+  String get fundShares => '持有份额';
+
+  @override
+  String get dataSource => '数据来源';
+
+  @override
   String get accountsLoadFailed => '账户加载失败';
 
   @override
