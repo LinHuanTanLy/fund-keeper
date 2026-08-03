@@ -236,7 +236,7 @@ FUND_VALUATION_FUND_CODES=
 ```bash
 docker build -t fund-keeper-backend ./backend
 cp .env.production.example .env.production
-docker compose -f compose.production.yaml up -d --build
+docker compose --env-file .env.production -f compose.production.yaml up -d --build
 ```
 
 Zeabur、Railway、Oracle Cloud 与腾讯云轻量服务器的适配性、费用边界和

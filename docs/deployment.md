@@ -61,9 +61,16 @@ VPS 部署：
 ```bash
 cp .env.production.example .env.production
 # 修改全部密码、JWT 密钥和 SMTP 配置
-docker compose -f compose.production.yaml up -d --build
+docker compose --env-file .env.production -f compose.production.yaml up -d --build
 curl http://127.0.0.1:8080/actuator/health
 ```
+
+`--env-file` 不能省略：Compose 的 `${MYSQL_DATABASE}` 和
+`${BACKEND_PORT}` 插值发生在容器启动前，服务中的 `env_file` 只负责向容器传值。
+若修改了 `BACKEND_PORT`，健康检查地址也要使用对应端口。
+
+2026-08-03 已完成本地生产栈验证：后端镜像成功构建，独立 MySQL 从空库执行
+V1～V8 迁移，MySQL、Redis、后端健康检查通过，容器内后端可经 SMTP 发送邮件。
 
 PaaS 部署时将服务根目录设为 `backend`，平台会使用其中的 `Dockerfile`。
 必须配置 `DB_URL`、数据库账号、Redis、SMTP 和两个认证密钥。平台注入的
